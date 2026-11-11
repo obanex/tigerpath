@@ -24,7 +24,8 @@
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-explore" aria-controls="view-explore" aria-selected="true">Explore</button>
       <button role="tab" id="tab-directions" aria-controls="view-directions" aria-selected="false">Directions</button>
-      <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">My Classes</button>
+      <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">Classes</button>
+      <button role="tab" id="tab-me" aria-controls="view-me" aria-selected="false">Me</button>
       <button role="tab" id="tab-layers" aria-controls="view-layers" aria-selected="false">Layers</button>
     </nav>
 
@@ -85,6 +86,10 @@
             <button class="btn primary" type="submit">Add class</button>
           </form>
         </details>
+        <details class="card" id="reminderCard" open>
+          <summary>🔔 Class reminders</summary>
+          <div class="rem-body"></div>
+        </details>
         <details class="card">
           <summary>📅 Export to calendar</summary>
           <div class="row">
@@ -92,8 +97,13 @@
             <div class="field"><label for="termEnd">Last day</label><input id="termEnd" type="date" /></div>
           </div>
           <button class="btn" id="icsBtn">Download .ics</button>
-          <p class="hint">Works with Google Calendar, Apple Calendar and Outlook. Each event includes the building and room.</p>
+          <p class="hint">Works with Google Calendar, Apple Calendar and Outlook. Each event includes the building, room and a reminder at your chosen time.</p>
         </details>
+      </section>
+
+      <!-- ME -->
+      <section id="view-me" role="tabpanel" aria-labelledby="tab-me" hidden>
+        <div id="meOut"></div>
       </section>
 
       <!-- LAYERS -->
@@ -102,6 +112,7 @@
         <div class="seg" id="basemaps" role="radiogroup" aria-label="Base map"></div>
         <h2 class="h">Show on map</h2>
         <div id="layerToggles" class="toggles"></div>
+        <div id="accessLegend" hidden></div>
         <div class="field"><label for="permit">Parking permit</label>
           <select id="permit"><option value="">All permits</option></select></div>
         <p class="hint" id="shuttleNote"></p>
@@ -120,6 +131,7 @@
     <button class="fab" id="resetBtn" title="Recenter campus" aria-label="Recenter on campus">⌂</button>
   </div>
   <div id="toast" role="status" aria-live="polite" hidden></div>
+  <div id="banner" role="alert" hidden></div>
 
   <script type="module" src="/src/main.js"></script>
 </body>

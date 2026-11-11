@@ -7,9 +7,15 @@ import { buildSeedGraph, route, directions, PROFILES } from './lib/graph.js';
 import { graphFromProcessed, matchBuildings } from './lib/osm.js';
 import { createIndex, search } from './lib/search.js';
 import { openStatus, weekTable, DAYS, DAY_LABELS, formatTime } from './lib/hours.js';
-import { loadSchedule, saveSchedule, planDay, toICS, WEEKDAYS } from './lib/schedule.js';
+import { planDay, toICS, WEEKDAYS } from './lib/schedule.js';
 import { distance, formatDistance, formatMinutes } from './lib/geo.js';
 import { initEditor, applyPinOverrides } from './ui/editor.js';
+import { AccountService, LocalBackend, SupabaseBackend } from './lib/account.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { createTracker } from './ui/tracker.js';
+import { createReminders } from './ui/notify.js';
+import { createMeView } from './ui/me.js';
+import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 
 const CENTER = [39.3925, -76.6110];
 const $ = (s, el = document) => el.querySelector(s);
@@ -28,14 +34,20 @@ const S = {
   selected: null, room: null,
   from: null, to: null, profile: 'standard', lastRoute: null,
   me: null, live: false, watchId: null,
-  favs: store.get('favs', []), recent: store.get('recent', []),
   category: null,
-  layers: { buildings: true, labels: true, parking: true, shuttle: false, safety: true, outlines: true, ...store.get('layers', {}) },
+  layers: { buildings: true, labels: true, parking: true, shuttle: false, safety: true, outlines: true, access: false, ...store.get('layers', {}) },
   permit: '', basemap: store.get('basemap', 'auto'),
   pace: store.get('pace', 1.34), units: store.get('units', 'imperial'),
-  schedule: loadSchedule(),
   day: WEEKDAYS.includes(DAYS[new Date().getDay()]) ? DAYS[new Date().getDay()] : 'mon',
 };
+// Account (or guest) data: favorites, recent, schedule, goals, activity, settings.
+const acc = new AccountService(null);
+Object.defineProperties(S, {
+  favs: { get: () => acc.data.favs },
+  recent: { get: () => acc.data.recent },
+  schedule: { get: () => acc.data.schedule },
+  settings: { get: () => acc.data.settings },
+});
 const byId = new Map(S.buildings.map((b) => [b.id, b]));
 const parkingById = new Map(PARKING.map((p) => [p.id, p]));
 let index = createIndex(S.buildings);
@@ -68,7 +80,7 @@ function setBasemap(kind = S.basemap) {
 
 const layers = {
   outlines: L.layerGroup(), buildings: L.layerGroup(), parking: L.layerGroup(),
-  shuttle: L.layerGroup(), safety: L.layerGroup(), route: L.layerGroup().addTo(map), me: L.layerGroup().addTo(map),
+  shuttle: L.layerGroup(), safety: L.layerGroup(), access: L.layerGroup(), route: L.layerGroup().addTo(map), me: L.layerGroup().addTo(map),
 };
 const markers = new Map();
 
@@ -148,8 +160,48 @@ function drawOutlines() {
       .on('click', () => match && selectBuilding(match.id)).addTo(layers.outlines);
   }
 }
+// ---------------------------------------------------------------- accessibility
+let localAccess = [];
+try { localAccess = EDIT ? JSON.parse(localStorage.getItem('tigerpath.access')) ?? [] : []; } catch { /* none */ }
+const accessFeatures = () => [...ACCESS_FEATURES, ...localAccess];
+const accessEntrances = (id) => accessFeatures().filter((f) => f.building === id && (f.type === 'entrance' || f.type === 'automatic-door'));
+const canvas = L.canvas({ padding: 0.3 });
+
+/** Step-free footpaths, stairs to avoid, rough surfaces, curb cuts, accessible parking, ramps/entrances/elevators. */
+function drawAccess() {
+  layers.access.clearLayers();
+  if (S.osm) {
+    const groups = { good: [], ok: [], rough: [], stairs: [] };
+    for (const [a, list] of S.graph.adj) for (const e of list) {
+      if (a > e.to || !e.path) continue;
+      const A = S.graph.nodes.get(a), B = S.graph.nodes.get(e.to);
+      const seg = [[A.lat, A.lng], [B.lat, B.lng]];
+      if (e.stairs || e.wheelchair === 'no' || e.kerb === 'raised') groups.stairs.push(seg);
+      else if (e.rough || e.steep) groups.rough.push(seg);
+      else if (e.ramp || e.wheelchair === 'yes') groups.good.push(seg);
+      else groups.ok.push(seg);
+    }
+    const line = (segs, style, tip) => segs.length && L.polyline(segs, { renderer: canvas, interactive: false, ...style }).addTo(layers.access) && tip;
+    line(groups.ok, { color: '#7c3aed', weight: 3, opacity: 0.55 });
+    line(groups.good, { color: '#5b21b6', weight: 5, opacity: 0.9 });
+    line(groups.rough, { color: '#a16207', weight: 3, opacity: 0.9, dashArray: '2 5' });
+    line(groups.stairs, { color: '#dc2626', weight: 4, opacity: 0.95, dashArray: '4 5' });
+    for (const [lat, lng] of S.osm.access?.curbCuts ?? []) L.circleMarker([lat, lng], { renderer: canvas, radius: 3, color: '#fff', weight: 1, fillColor: '#5b21b6', fillOpacity: 1, interactive: false }).addTo(layers.access);
+    for (const p of S.osm.access?.parking ?? []) {
+      L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="pmark access">♿</div>', iconSize: [24, 24] }), title: 'Accessible parking' })
+        .bindPopup(`<b>♿ Accessible parking</b><br>${p.capacity} space${p.capacity > 1 ? 's' : ''}${p.lot ? ` · ${esc(p.lot)}` : ''}<div class="ctx-menu"><button data-route-to="pt:${p.lat},${p.lng}">Directions here</button></div>`).addTo(layers.access);
+    }
+  }
+  for (const f of accessFeatures()) {
+    const t = ACCESS_TYPES[f.type] ?? { label: f.type, icon: '♿' };
+    L.marker([f.lat, f.lng], { icon: L.divIcon({ className: '', html: `<div class="amark" aria-hidden="true">${t.icon}</div>`, iconSize: [24, 24] }), title: t.label })
+      .bindPopup(`<b>${t.icon} ${esc(t.label)}</b>${f.building ? `<br>${esc(byId.get(f.building)?.name ?? f.building)}` : ''}${f.note ? `<br>${esc(f.note)}` : ''}${f.verified ? `<br><span class="muted">Checked ${esc(f.verified)}</span>` : ''}`)
+      .addTo(layers.access);
+  }
+}
+
 function applyLayers() {
-  for (const k of ['outlines', 'buildings', 'parking', 'shuttle', 'safety']) {
+  for (const k of ['outlines', 'buildings', 'parking', 'shuttle', 'safety', 'access']) {
     if (S.layers[k]) layers[k].addTo(map); else map.removeLayer(layers[k]);
   }
   updateLabels();
@@ -195,9 +247,18 @@ function buildGraph() {
 
 let tmpSeq = 0;
 /** Resolve a place to a graph node id. Returns { id, label, latlng, cleanup }. */
-function placeNode(place) {
+function placeNode(place, profile = 'standard') {
   if (!place) return null;
-  if (place.type === 'building') { const b = byId.get(place.id); return b && { id: b.id, label: b.name, latlng: [b.lat, b.lng], cleanup() {} }; }
+  if (place.type === 'building') {
+    const b = byId.get(place.id); if (!b) return null;
+    const doors = profile === 'accessible' ? accessEntrances(b.id) : [];
+    if (doors.length) { // ♿ route to the nearest listed accessible entrance, not the building center
+      const door = doors[0];
+      const n = placeNode({ type: 'point', lat: door.lat, lng: door.lng, label: `${b.name} (accessible entrance)` });
+      return n;
+    }
+    return { id: b.id, label: b.name, latlng: [b.lat, b.lng], cleanup() {} };
+  }
   if (place.type === 'parking') { const p = parkingById.get(place.id); return p && S.graph.nodes.has(p.id) && { id: p.id, label: p.name, latlng: [p.lat, p.lng], cleanup() {} }; }
   const pt = place.type === 'me' ? S.me : place;
   if (!pt) return null;
@@ -210,10 +271,10 @@ function placeNode(place) {
 }
 const speed = (profile) => (profile === 'accessible' ? Math.min(S.pace, 1.0) : S.pace);
 function computeRoute(fromPlace, toPlace, profile = S.profile) {
-  const a = placeNode(fromPlace), b = placeNode(toPlace);
+  const a = placeNode(fromPlace, profile), b = placeNode(toPlace, profile);
   try {
     if (!a || !b) return null;
-    const res = route(S.graph, a.id, b.id, profile, { phones: safety.some((s) => s.kind === 'phone') });
+    const res = route(S.graph, a.id, b.id, profile, { phones: safety.some((s) => s.kind === 'phone'), strict: !!S.settings.strictAccess });
     if (!res) return { a, b, res: null };
     const latlngs = res.path.map((id) => { const n = S.graph.nodes.get(id); return [n.lat, n.lng]; });
     return { a, b, res, latlngs, steps: directions(S.graph, res, { fromLabel: a.label, toLabel: b.label }), minutes: res.dist / speed(profile) / 60 };
@@ -227,7 +288,7 @@ function walkMinutes(fromId, toId) {
 }
 
 // ---------------------------------------------------------------- tabs & sheet
-const TABS = ['explore', 'directions', 'schedule', 'layers'];
+const TABS = ['explore', 'directions', 'schedule', 'me', 'layers'];
 function showTab(name) {
   for (const t of TABS) {
     $(`#tab-${t}`).setAttribute('aria-selected', String(t === name));
@@ -235,6 +296,7 @@ function showTab(name) {
   }
   S.tab = name;
   if (name === 'schedule') renderSchedule();
+  if (name === 'me') meView?.render();
   if (name !== 'directions' && name !== 'schedule') layers.route.clearLayers();
   if (name === 'directions' && S.lastRoute) drawRoute(S.lastRoute);
   writeHash();
@@ -331,7 +393,7 @@ function renderCategoryList(bs) {
 function selectBuilding(id, { room = null, fly = true } = {}) {
   const b = byId.get(id); if (!b) return;
   S.selected = id; S.room = room;
-  S.recent = [id, ...S.recent.filter((x) => x !== id)].slice(0, 6); store.set('recent', S.recent);
+  acc.update((d) => { d.recent = [id, ...d.recent.filter((x) => x !== id)].slice(0, 6); });
   refreshMarkers();
   if (fly) flyTo([b.lat, b.lng]);
   if (S.tab !== 'explore') showTab('explore');
@@ -363,15 +425,27 @@ function renderDetail() {
     ${b.food?.length ? `<h2 class="h">Food here</h2><div>${b.food.map((f) => `<span class="tag">🍴 ${esc(f)}</span>`).join('')}</div>` : ''}
     ${b.amenities?.length ? `<h2 class="h">Amenities</h2><div>${b.amenities.map((a) => `<span class="tag">${esc(AMENITY_LABELS[a] ?? a)}</span>`).join('')}</div>` : ''}
     ${b.hours ? `<h2 class="h">Hours</h2><table class="hours">${weekTable(b.hours).map((r) => `<tr class="${r.day === today ? 'today' : ''}"><td>${r.day}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>` : ''}
+    <h2 class="h">♿ Accessibility</h2>${accessCard(b)}
     <h2 class="h">Nearby</h2><ul class="list" id="nearby"></ul>`;
   el.hidden = false; $('#home').hidden = true;
   $('#backBtn').onclick = () => { S.selected = null; S.room = null; refreshMarkers(); renderDetail(); renderHome(); writeHash(); };
   $('#dirTo').onclick = () => { setPlace('to', { type: 'building', id: b.id }); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
   $('#dirFrom').onclick = () => { setPlace('from', { type: 'building', id: b.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
-  $('#favBtn').onclick = () => { S.favs = fav ? S.favs.filter((x) => x !== b.id) : [...S.favs, b.id]; store.set('favs', S.favs); renderDetail(); };
+  $('#favBtn').onclick = () => { acc.update((d) => { d.favs = fav ? d.favs.filter((x) => x !== b.id) : [...d.favs, b.id]; }); renderDetail(); };
   $('#shareBtn').onclick = () => share(location.href, b.name);
+  $('#stepFree').onclick = () => { S.profile = 'accessible'; renderProfiles(); if (!S.layers.access) { S.layers.access = true; applyLayers(); renderLayersTab(); } $('#dirTo').click(); };
   const near = S.buildings.filter((x) => x.id !== b.id).map((x) => ({ x, d: distance(b, x) })).sort((p, q) => p.d - q.d).slice(0, 4);
   $('#nearby').innerHTML = near.map(({ x, d }) => `<li><span class="code">${esc(x.id)}</span><button class="link" data-b="${esc(x.id)}">${esc(x.name)}</button><span class="muted">${formatDistance(d, S.units)}</span></li>`).join('');
+}
+
+function accessCard(b) {
+  const feats = accessFeatures().filter((f) => f.building === b.id);
+  const parking = (S.osm?.access?.parking ?? []).map((p) => ({ p, d: distance(b, p) })).sort((x, y) => x.d - y.d)[0];
+  const items = feats.map((f) => `<li>${ACCESS_TYPES[f.type]?.icon ?? '♿'} ${esc(ACCESS_TYPES[f.type]?.label ?? f.type)}${f.note ? ` — ${esc(f.note)}` : ''}</li>`);
+  if (parking && parking.d < 400) items.push(`<li>♿ Accessible parking ${formatDistance(parking.d, S.units)} away (${parking.p.capacity} space${parking.p.capacity > 1 ? 's' : ''})</li>`);
+  return `<ul class="access-list">${items.join('') || '<li class="muted">No accessible entrances, ramps or elevators mapped for this building yet.</li>'}</ul>
+    <div class="btn-row"><button class="btn small" id="stepFree">♿ Step-free route here</button>
+    <a class="btn small" href="${OFFICIAL_ACCESS_MAP_URL}" target="_blank" rel="noopener">TU accessibility map ↗</a></div>`;
 }
 
 function renderHome() {
@@ -450,14 +524,21 @@ $('#swapBtn').onclick = () => { const f = S.from; S.from = S.to; S.to = f; $('#f
 
 const PROFILE_HINT = {
   standard: 'Shortest walking route.',
-  accessible: 'Avoids stairs and paths marked not wheelchair-accessible; uses a slower pace for time estimates.',
+  accessible: 'Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; uses a slower pace for time estimates.',
   night: 'Prefers lit paths and paths near emergency phones.',
 };
 function renderProfiles() {
-  renderSeg('#profiles', Object.entries(PROFILES).map(([k, p]) => [k, (k === 'accessible' ? '♿ ' : k === 'night' ? '🌙 ' : '🚶 ') + p.label]), S.profile, (v) => { S.profile = v; renderProfiles(); updateRoute(); });
+  renderSeg('#profiles', Object.entries(PROFILES).map(([k, p]) => [k, (k === 'accessible' ? '♿ ' : k === 'night' ? '🌙 ' : '🚶 ') + p.label]), S.profile, (v) => {
+    S.profile = v;
+    if (v === 'accessible' && !S.layers.access) { S.layers.access = true; applyLayers(); renderLayersTab(); }
+    renderProfiles(); updateRoute();
+  });
   let hint = PROFILE_HINT[S.profile];
   if (S.graphSource === 'seed' && S.profile !== 'standard') hint += ' Load OpenStreetMap path data (npm run fetch-osm) for full stairs and lighting detail.';
-  $('#profileHint').textContent = hint;
+  $('#profileHint').innerHTML = esc(hint) + (S.profile === 'accessible'
+    ? `<label class="check"><input type="checkbox" id="strictAccess" ${S.settings.strictAccess ? 'checked' : ''}/> Also avoid steep slopes and rough surfaces (gravel, grass)</label>` : '');
+  const strict = $('#strictAccess');
+  if (strict) strict.onchange = () => { acc.update((d) => { d.settings.strictAccess = strict.checked; }); walkCache.clear(); updateRoute({ fit: false }); };
 }
 
 function drawRoute(r) {
@@ -499,8 +580,9 @@ function toggleLive() {
   S.live = !S.live;
   if (S.live) {
     if (S.from?.type !== 'me') { setPlace('from', { type: 'me' }); }
-    startWatch(); toast('Following your location. Keep the app open.');
-  }
+    startWatch(); toast(acc.user ? 'Following your location — this walk counts toward your goals.' : 'Following your location. Keep the app open.');
+    tracker.start('nav').catch(() => {});
+  } else if (tracker.source === 'nav') tracker.stop();
   updateRoute({ fit: !S.live });
 }
 function onLiveUpdate() {
@@ -508,7 +590,7 @@ function onLiveUpdate() {
   map.panTo([S.me.lat, S.me.lng], { animate: true });
   const off = Math.min(...r.latlngs.map(([lat, lng]) => distance(S.me, { lat, lng })));
   const end = { lat: r.latlngs.at(-1)[0], lng: r.latlngs.at(-1)[1] };
-  if (distance(S.me, end) < 20) { S.live = false; toast(`You’ve arrived at ${r.b.label} 🎉`, 4000); updateRoute({ fit: false }); return; }
+  if (distance(S.me, end) < 20) { S.live = false; if (tracker.source === 'nav') tracker.stop(); toast(`You’ve arrived at ${r.b.label} 🎉`, 4000); updateRoute({ fit: false }); return; }
   if (off > 40) { toast('Off route — rerouting'); updateRoute({ fit: false }); }
   else if (S.from?.type === 'me') updateRoute({ fit: false });
 }
@@ -558,8 +640,9 @@ function renderSchedule() {
     layers.route.clearLayers(); $('#addClass').open = true; return;
   }
   if (!plan.classes.length) { el.innerHTML = `<p class="hint">No classes on ${DAY_LABELS[S.day]}. 🎉</p>`; layers.route.clearLayers(); return; }
-  const LEG_TEXT = { ok: (l) => `🚶 ${formatMinutes(l.walk)} walk · ${l.gap} min between`, tight: (l) => `⚠️ ${formatMinutes(l.walk)} walk, only ${l.gap} min between — hustle`,
-    late: (l) => `⛔ ${formatMinutes(l.walk)} walk but only ${l.gap} min between — you’ll be late`, overlap: () => '⛔ These classes overlap' };
+  const w = (l) => formatMinutes(Math.ceil(l.walk)); // round walks up so “10 min walk, 10 min gap” never says late
+  const LEG_TEXT = { ok: (l) => `🚶 ${w(l)} walk · ${l.gap} min between`, tight: (l) => `⚠️ ${w(l)} walk, only ${l.gap} min between — hustle`,
+    late: (l) => `⛔ ${w(l)} walk but only ${l.gap} min between — you’ll be late`, overlap: () => '⛔ These classes overlap' };
   el.innerHTML = plan.classes.map((c, i) => {
     const b = byId.get(c.building);
     const leg = plan.legs[i];
@@ -568,7 +651,7 @@ function renderSchedule() {
         <button class="icon-btn" data-del="${esc(c.id)}" aria-label="Remove ${esc(c.title)}">✕</button></div>
       ${leg ? `<div class="leg ${leg.status}">${LEG_TEXT[leg.status](leg)}</div>` : ''}`;
   }).join('');
-  el.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = () => { S.schedule = S.schedule.filter((c) => c.id !== btn.dataset.del); saveSchedule(S.schedule); renderSchedule(); });
+  el.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = () => { acc.update((d) => { d.schedule = d.schedule.filter((c) => c.id !== btn.dataset.del); }); renderSchedule(); });
   el.querySelectorAll('[data-room]').forEach((a) => a.onclick = (e) => {
     e.preventDefault(); e.stopPropagation();
     const room = a.dataset.room ? search(index, `${a.dataset.b} ${a.dataset.room}`)[0]?.room : null;
@@ -605,22 +688,24 @@ function initScheduleForm() {
     const days = [...$('#cDays').querySelectorAll('input:checked')].map((i) => i.value);
     if (!days.length) { toast('Pick at least one day'); return; }
     if ($('#cEnd').value <= $('#cStart').value) { toast('End time must be after start time'); return; }
-    S.schedule.push({ id: crypto.randomUUID?.() ?? String(Date.now()), title: $('#cTitle').value.trim(), building: $('#cBldg').value,
-      room: $('#cRoom').value.trim(), days, start: $('#cStart').value, end: $('#cEnd').value });
-    saveSchedule(S.schedule);
+    const cls = { id: crypto.randomUUID?.() ?? String(Date.now()), title: $('#cTitle').value.trim(), building: $('#cBldg').value,
+      room: $('#cRoom').value.trim(), days, start: $('#cStart').value, end: $('#cEnd').value };
+    acc.update((d) => { d.schedule.push(cls); });
     if (!days.includes(S.day)) S.day = days[0];
     e.target.reset(); $('#cStart').value = '09:30'; $('#cEnd').value = '10:45';
     renderSchedule(); toast('Class added');
   };
   const y = new Date().getFullYear();
-  $('#termStart').value = store.get('termStart', `${y}-08-31`);
-  $('#termEnd').value = store.get('termEnd', `${y}-12-11`);
+  const syncTerm = () => { $('#termStart').value = S.settings.term?.start ?? `${y}-08-31`; $('#termEnd').value = S.settings.term?.end ?? `${y}-12-11`; };
+  syncTerm(); acc.onChange(syncTerm);
+  const saveTerm = () => { if ($('#termStart').value && $('#termEnd').value >= $('#termStart').value) acc.update((d) => { d.settings.term = { start: $('#termStart').value, end: $('#termEnd').value }; }); };
+  $('#termStart').onchange = saveTerm; $('#termEnd').onchange = saveTerm;
   $('#icsBtn').onclick = () => {
     if (!S.schedule.length) { toast('Add a class first'); return; }
     const termStart = $('#termStart').value, termEnd = $('#termEnd').value;
     if (!termStart || !termEnd || termEnd < termStart) { toast('Check the term dates'); return; }
-    store.set('termStart', termStart); store.set('termEnd', termEnd);
-    const ics = toICS(S.schedule, { termStart, termEnd, buildingName: (id) => byId.get(id)?.name ?? id });
+    saveTerm();
+    const ics = toICS(S.schedule, { termStart, termEnd, buildingName: (id) => byId.get(id)?.name ?? id, alarmMinutes: S.settings.leadMinutes ?? 10 });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })), download: 'towson-classes.ics' });
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
@@ -631,9 +716,11 @@ function renderLayersTab() {
   const rows = [
     ['buildings', 'Buildings', '#2563eb'], ['labels', 'Building names', '#64748b'], ['outlines', 'Building footprints (OSM)', '#94a3b8'],
     ['parking', 'Parking', '#475569'], ['shuttle', 'Shuttle routes', '#ffbb00'], ['safety', 'Emergency phones & AEDs', '#1d4ed8'],
+    ['access', '♿ Accessible routes, curb cuts & parking', '#7c3aed'],
   ];
   $('#layerToggles').innerHTML = rows.map(([k, label, c]) => `<label><input type="checkbox" data-l="${k}" ${S.layers[k] ? 'checked' : ''}/><span class="swatch" style="background:${c}"></span>${label}</label>`).join('');
-  $('#layerToggles').onchange = (e) => { S.layers[e.target.dataset.l] = e.target.checked; applyLayers(); };
+  $('#layerToggles').onchange = (e) => { S.layers[e.target.dataset.l] = e.target.checked; applyLayers(); renderAccessLegend(); };
+  renderAccessLegend();
   $('#permit').innerHTML = '<option value="">All permits</option>' + Object.entries(PERMIT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   $('#permit').onchange = (e) => { S.permit = e.target.value; drawParking(); };
   $('#pace').value = String(S.pace);
@@ -647,6 +734,19 @@ function renderLayersTab() {
     : 'Routing uses an approximate path network between buildings. Run <code>npm run fetch-osm</code> to load real walkways.')
     + (phones ? ` ${phones} emergency phones/AEDs loaded.` : ' No verified emergency phone data loaded yet.')
     + (S.graphSource === 'osm' ? ' Building locations from OpenStreetMap footprints.' : ' Building positions are approximate until verified.');
+}
+
+function renderAccessLegend() {
+  const el = $('#accessLegend'); if (!el) return;
+  el.hidden = !S.layers.access;
+  el.innerHTML = `<ul class="legend">
+      <li><span class="lg" style="background:#5b21b6;height:5px"></span>Marked wheelchair-friendly</li>
+      <li><span class="lg" style="background:#7c3aed;opacity:.6"></span>Step-free path</li>
+      <li><span class="lg dash" style="color:#a16207"></span>Rough surface (gravel, grass)</li>
+      <li><span class="lg dash" style="color:#dc2626"></span>Stairs or curb — avoid</li>
+      <li><span class="lg dot"></span>Curb cut</li></ul>
+    <p class="hint">${(S.osm?.access?.curbCuts?.length ?? 0)} curb cuts, ${(S.osm?.access?.parking ?? []).reduce((n, p) => n + p.capacity, 0)} accessible parking spaces and ${accessFeatures().length} ramps/elevators/entrances mapped so far.
+      Ramps, elevators and accessible entrances are still missing from the map data — see TU's <a href="${OFFICIAL_ACCESS_MAP_URL}" target="_blank" rel="noopener">official accessibility map (PDF) ↗</a>.</p>`;
 }
 
 // ---------------------------------------------------------------- theme
@@ -674,6 +774,7 @@ function writeHash() {
   if (S.tab === 'directions') { if (S.from) p.set('from', encPlace(S.from)); if (S.to) p.set('to', encPlace(S.to)); if (S.profile !== 'standard') p.set('mode', S.profile); }
   else if (S.tab === 'schedule') { p.set('tab', 'classes'); p.set('day', S.day); }
   else if (S.tab === 'layers') p.set('tab', 'layers');
+  else if (S.tab === 'me') p.set('tab', 'me');
   else if (S.selected) { p.set('b', S.selected); if (S.room) p.set('room', S.room.room); }
   const h = p.toString();
   history.replaceState(null, '', location.pathname + location.search + (h ? '#' + h : ''));
@@ -693,6 +794,7 @@ function readHash() {
       if (WEEKDAYS.includes(p.get('day'))) S.day = p.get('day');
       showTab('schedule');
     } else if (p.get('tab') === 'layers') showTab('layers');
+    else if (p.get('tab') === 'me') showTab('me');
     else if (p.has('b') && byId.has(p.get('b'))) {
       const room = p.get('room') ? search(index, `${p.get('b')} ${p.get('room')}`)[0]?.room : null;
       selectBuilding(p.get('b'), { room });
@@ -726,17 +828,83 @@ async function loadOsm() {
   } catch { /* no OSM data bundled — seed data is used */ }
 }
 
+// ---------------------------------------------------------------- accounts, activity, reminders
+let meView, tracker, reminders;
+async function initAccounts() {
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    const { createClient } = await import('@supabase/supabase-js');
+    acc.backend = new SupabaseBackend(createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
+  } else acc.backend = new LocalBackend();
+  await acc.init();
+  tracker = createTracker({
+    acc,
+    onUpdate: (_, err) => { if (err) toast(err); if (S.tab === 'me') meView.render(); },
+    onGoal: () => {
+      toast('🎉 You hit your daily goal!', 4000);
+      if ('Notification' in window && Notification.permission === 'granted') navigator.serviceWorker?.getRegistration().then((r) => r?.showNotification('Goal reached 🎉', { body: 'You hit your TigerPath goal for today.', icon: 'icon.svg', tag: 'goal' }));
+    },
+  });
+  meView = createMeView({ el: $('#meOut'), acc, tracker, toast, backendKind: acc.backend.kind });
+  reminders = createReminders({
+    acc, walkMinutes, buildingName: (id) => byId.get(id)?.name ?? id,
+    onFire: (r, { title, body, url }) => showBanner(title, body, url),
+  });
+  acc.onChange(() => {
+    walkCache.clear();
+    if (S.tab === 'me') meView.render();
+    if (S.tab === 'schedule') renderSchedule();
+    if (!S.selected) renderHome();
+    renderReminderCard();
+    $('#tab-me').textContent = acc.user ? 'Me' : 'Sign in';
+  });
+  $('#tab-me').textContent = acc.user ? 'Me' : 'Sign in';
+}
+
+function showBanner(title, body, url) {
+  const el = $('#banner');
+  el.innerHTML = `<div><b>🔔 ${esc(title)}</b><div class="small">${esc(body)}</div></div>
+    <div class="btn-row"><a class="btn primary small" href="${esc(url)}" id="bannerGo">Directions</a><button class="btn small" id="bannerX">Dismiss</button></div>`;
+  el.hidden = false;
+  $('#bannerX').onclick = () => (el.hidden = true);
+  $('#bannerGo').onclick = () => (el.hidden = true);
+}
+
+function renderReminderCard() {
+  const el = $('#reminderCard'); if (!el || !reminders) return;
+  const st = S.settings, perm = reminders.permission;
+  const next = reminders.plan().find((r) => r.fireAt > new Date());
+  const t = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  el.querySelector('.rem-body').innerHTML = `
+    <label class="check"><input type="checkbox" id="remOn" ${st.notifications ? 'checked' : ''}/> Remind me before each class</label>
+    <div class="row">
+      <div class="field"><label for="remLead">How early</label><select id="remLead">
+        ${[0, 5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${m === (st.leadMinutes ?? 10) ? 'selected' : ''}>${m ? `${m} minutes before` : 'When it’s time to leave'}</option>`).join('')}
+      </select></div></div>
+    <label class="check"><input type="checkbox" id="remWalk" ${st.addWalkTime ? 'checked' : ''}/> Add walking time from my previous class</label>
+    ${st.notifications && perm === 'denied' ? '<p class="form-error">Notifications are blocked in your browser settings. You’ll still see reminders inside TigerPath while it’s open.</p>' : ''}
+    ${st.notifications && next ? `<p class="hint">Next: <b>${esc(next.cls.title)}</b> — reminder at ${t(next.fireAt)}${next.leaveBy ? ` (leave by ${t(next.leaveBy)})` : ''}.</p>` : ''}
+    <div class="btn-row"><button class="btn small" id="remTest" type="button">Send a test reminder</button></div>
+    <p class="hint">Reminders appear while TigerPath is open or installed on your phone. For reminders when it’s closed, use <b>Export to calendar</b> below — your calendar app will alert you at the same time.</p>`;
+  $('#remOn').onchange = async (e) => { if (e.target.checked) { const p = await reminders.enable(); toast(p === 'granted' ? 'Class reminders on' : 'Reminders on (inside TigerPath only)'); } else reminders.disable(); };
+  $('#remLead').onchange = (e) => acc.update((d) => { d.settings.leadMinutes = +e.target.value; });
+  $('#remWalk').onchange = (e) => acc.update((d) => { d.settings.addWalkTime = e.target.checked; });
+  $('#remTest').onclick = async () => { if (reminders.permission === 'default') await Notification.requestPermission(); reminders.test(); };
+}
+
 (async function boot() {
   const theme = store.get('theme', null); if (theme) document.documentElement.dataset.theme = theme;
   setBasemap(S.basemap);
   await loadOsm();
   buildGraph();
-  drawBuildings(); drawParking(); drawShuttles(); drawSafety(); drawOutlines();
+  await initAccounts();
+  drawBuildings(); drawParking(); drawShuttles(); drawSafety(); drawOutlines(); drawAccess();
   applyLayers();
-  renderChips(); renderQuick(); renderHome(); renderProfiles(); renderLayersTab(); initScheduleForm();
+  renderChips(); renderQuick(); renderHome(); renderProfiles(); renderLayersTab(); initScheduleForm(); renderReminderCard();
   readHash();
   if (!location.hash) updateRoute({ fit: false });
   window.addEventListener('hashchange', readHash);
-  if (EDIT) initEditor({ map, buildings: S.buildings, markers, onMove: () => { buildGraph(); walkCache.clear(); if (S.lastRoute) updateRoute({ fit: false }); } });
+  if (EDIT) initEditor({ map, buildings: S.buildings, markers, onMove: () => { buildGraph(); walkCache.clear(); if (S.lastRoute) updateRoute({ fit: false }); },
+    access: localAccess, onAccessChange: () => { drawAccess(); renderAccessLegend(); } });
+  addEventListener('pagehide', () => acc.flush());
   if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
 })();

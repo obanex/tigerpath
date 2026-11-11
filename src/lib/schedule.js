@@ -46,7 +46,7 @@ const stamp = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
  * termStart/termEnd: 'YYYY-MM-DD'. Times are floating local times (no TZID), which
  * calendar apps interpret in the user's own zone — correct for an on-campus schedule.
  */
-export function toICS(classes, { termStart, termEnd, buildingName = (id) => id, now = new Date() }) {
+export function toICS(classes, { termStart, termEnd, buildingName = (id) => id, now = new Date(), alarmMinutes = null }) {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TigerPath//Class Schedule//EN', 'CALSCALE:GREGORIAN'];
   const start = new Date(termStart + 'T00:00:00');
   const until = termEnd.replace(/-/g, '') + 'T235959';
@@ -66,6 +66,7 @@ export function toICS(classes, { termStart, termEnd, buildingName = (id) => id, 
       `RRULE:FREQ=WEEKLY;BYDAY=${c.days.map((d) => ICS_DAY[d]).join(',')};UNTIL=${until}`,
       `SUMMARY:${esc(c.title)}`,
       `LOCATION:${esc(`${buildingName(c.building)}${c.room ? ' ' + c.room : ''}, Towson University`)}`,
+      ...(alarmMinutes != null ? ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(`${c.title} starts in ${alarmMinutes} min`)}`, `TRIGGER:-PT${Math.max(0, Math.round(alarmMinutes))}M`, 'END:VALARM'] : []),
       'END:VEVENT',
     );
   }

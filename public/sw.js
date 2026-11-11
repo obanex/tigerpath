@@ -1,5 +1,5 @@
 // TigerPath service worker: app shell works offline, map tiles you've viewed are cached.
-const APP = 'tigerpath-app-v1';
+const APP = 'tigerpath-app-v2';
 const TILES = 'tigerpath-tiles-v1';
 const MAX_TILES = 1500;
 const TILE_HOSTS = /(basemaps\.cartocdn\.com|tile\.openstreetmap\.org|server\.arcgisonline\.com)$/;
@@ -34,4 +34,15 @@ self.addEventListener('fetch', (e) => {
       return hit ?? net;
     }));
   }
+});
+
+// Tapping a class reminder opens TigerPath with directions to the class.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url ?? './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    const win = wins.find((w) => w.url.startsWith(self.registration.scope));
+    if (win) { win.navigate(url).catch(() => {}); return win.focus(); }
+    return self.clients.openWindow(url);
+  }));
 });

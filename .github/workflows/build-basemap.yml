@@ -14,8 +14,8 @@ permissions:
   actions: write
 
 env:
-  # min lon, min lat, max lon, max lat — campus plus downtown Towson
-  BBOX: '-76.645,39.370,-76.580,39.415'
+  # min lon, min lat, max lon, max lat — greater Towson: Rodgers Forge/GBMC to Goucher/Loch Raven, up to the Beltway
+  BBOX: '-76.680,39.355,-76.545,39.445'
 
 jobs:
   build:

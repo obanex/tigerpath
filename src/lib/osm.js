@@ -23,6 +23,9 @@ out body;
 >;
 out skel qt;`;
 
+// Unnamed houses around campus are skipped to keep the data file small.
+const CAMPUS_BUILDING_TYPES = new Set(['university', 'college', 'school', 'dormitory', 'stadium', 'sports_hall', 'parking']);
+
 const WALKABLE_EXCLUDE = (t) => t.foot === 'no' || t.access === 'private' || t.access === 'no' || t.service === 'parking_aisle' && t.foot !== 'yes';
 
 /** Compact, JSON-friendly result. */
@@ -61,7 +64,7 @@ export function processOverpass(json) {
         usedNodes.add(a); usedNodes.add(b);
         edges.push([a, b, flags]);
       }
-    } else if (t.building && pts.length > 2) {
+    } else if (t.building && pts.length > 2 && (t.name || t.ref || CAMPUS_BUILDING_TYPES.has(t.building))) {
       const c = centroid(pts.map((p) => ({ lat: p.lat, lng: p.lon })));
       buildings.push({ osmId: el.id, name: t.name ?? null, ref: t.ref ?? null, ...c,
         outline: pts.map((p) => [round(p.lat), round(p.lon)]) });

@@ -1,14 +1,15 @@
 name: Fetch OpenStreetMap data
 
 # Downloads real walkways, building footprints, parking and emergency phones for
-# campus from OpenStreetMap. Run it from the Actions tab, or let it refresh monthly.
+# campus from OpenStreetMap and saves them on the `osm-data` branch for review.
+# Run it from the Actions tab, or let it refresh monthly.
 on:
   workflow_dispatch:
   schedule:
     - cron: '17 6 1 * *'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fetch:
@@ -21,10 +22,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run fetch-osm -- --raw
-      - uses: actions/upload-artifact@v4
-        with:
-          name: osm-data
-          path: |
-            public/data/osm-campus.json
-            osm-raw.json
-          retention-days: 7
+      - name: Save to osm-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git checkout -B osm-data
+          git add -f public/data/osm-campus.json osm-raw.json
+          git commit -m "OpenStreetMap campus data $(date -u +%F)"
+          git push -f origin osm-data

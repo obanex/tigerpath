@@ -16,6 +16,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { createTracker } from './ui/tracker.js';
 import { createReminders } from './ui/notify.js';
 import { createMeView } from './ui/me.js';
+import { routeOptions } from './lib/alternatives.js';
+import { isDarkOutside } from './lib/sun.js';
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 
 const CENTER = [39.3925, -76.6110];
@@ -38,7 +40,6 @@ const S = {
   category: null,
   layers: { buildings: true, labels: true, parking: true, shuttle: false, safety: true, outlines: true, access: false, ...store.get('layers', {}) },
   permit: '', basemap: store.get('basemap', 'map'),
-  pace: store.get('pace', 1.34), units: store.get('units', 'imperial'),
   day: WEEKDAYS.includes(DAYS[new Date().getDay()]) ? DAYS[new Date().getDay()] : 'mon',
 };
 // Account (or guest) data: favorites, recent, schedule, goals, activity, settings.
@@ -48,6 +49,8 @@ Object.defineProperties(S, {
   recent: { get: () => acc.data.recent },
   schedule: { get: () => acc.data.schedule },
   settings: { get: () => acc.data.settings },
+  pace: { get: () => acc.data.settings.pace ?? store.get('pace', 1.34) },
+  units: { get: () => acc.data.settings.units ?? store.get('units', 'imperial') },
 });
 const byId = new Map(S.buildings.map((b) => [b.id, b]));
 const parkingById = new Map(PARKING.map((p) => [p.id, p]));
@@ -298,13 +301,13 @@ function placeNode(place, profile = 'standard') {
   const label = place.type === 'me' ? 'your location' : place.label ?? 'dropped pin';
   return { id, label, latlng: [pt.lat, pt.lng], cleanup() { near.forEach((n) => S.graph.removeEdge(id, n.id)); S.graph.nodes.delete(id); S.graph.adj.delete(id); } };
 }
-const speed = (profile) => (profile === 'accessible' ? Math.min(S.pace, 1.0) : S.pace);
-function computeRoute(fromPlace, toPlace, profile = S.profile) {
+const speed = () => S.pace; // one pace for every option, so times compare fairly (set in My account)
+function computeRoute(fromPlace, toPlace, profile = 'standard', extra = {}) {
   const a = placeNode(fromPlace, profile), b = placeNode(toPlace, profile);
   try {
     if (!a || !b) return null;
     if (a.far || b.far) return { far: true, a, b, res: null };
-    const res = route(S.graph, a.id, b.id, profile, { phones: safety.some((s) => s.kind === 'phone'), strict: !!S.settings.strictAccess });
+    const res = route(S.graph, a.id, b.id, profile, { phones: safety.some((s) => s.kind === 'phone'), strict: !!S.settings.strictAccess, noStairs: !!S.settings.avoidStairs, ...extra });
     if (!res) return { a, b, res: null };
     const latlngs = res.path.map((id) => { const n = S.graph.nodes.get(id); return [n.lat, n.lng]; });
     return { a, b, res, latlngs, steps: directions(S.graph, res, { fromLabel: a.label, toLabel: b.label }), minutes: res.dist / speed(profile) / 60 };
@@ -318,23 +321,27 @@ function walkMinutes(fromId, toId) {
 }
 
 // ---------------------------------------------------------------- tabs & sheet
-const TABS = ['explore', 'directions', 'schedule', 'me', 'layers'];
+const TABS = ['explore', 'directions', 'schedule', 'layers'];
+/** name: a tab, or 'account' (My account, opened from the header button). */
 function showTab(name) {
   for (const t of TABS) {
     $(`#tab-${t}`).setAttribute('aria-selected', String(t === name));
     $(`#view-${t}`).hidden = t !== name;
   }
+  $('#view-account').hidden = name !== 'account';
+  $('#acctBtn').setAttribute('aria-pressed', String(name === 'account'));
   S.tab = name;
   if (name === 'schedule') renderSchedule();
-  if (name === 'me') meView?.render();
+  if (name === 'account') { meView?.render(); sheet('full'); }
   if (name !== 'directions' && name !== 'schedule') layers.route.clearLayers();
-  if (name === 'directions' && S.lastRoute) drawRoute(S.lastRoute);
+  if (name === 'directions' && S.options) drawRoutes();
   writeHash();
 }
 TABS.forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
+$('#acctBtn').addEventListener('click', () => showTab(S.tab === 'account' ? 'explore' : 'account'));
 $('.tabs').addEventListener('keydown', (e) => {
   if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-  const i = TABS.indexOf(S.tab ?? 'explore') + (e.key === 'ArrowRight' ? 1 : -1);
+  const i = Math.max(0, TABS.indexOf(S.tab ?? 'explore')) + (e.key === 'ArrowRight' ? 1 : -1);
   const t = TABS[(i + TABS.length) % TABS.length]; showTab(t); $(`#tab-${t}`).focus();
 });
 const SHEET = ['peek', 'half', 'full'];
@@ -463,7 +470,7 @@ function renderDetail() {
   $('#dirFrom').onclick = () => { setPlace('from', { type: 'building', id: b.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
   $('#favBtn').onclick = () => { acc.update((d) => { d.favs = fav ? d.favs.filter((x) => x !== b.id) : [...d.favs, b.id]; }); renderDetail(); };
   $('#shareBtn').onclick = () => share(location.href, b.name);
-  $('#stepFree').onclick = () => { S.profile = 'accessible'; renderProfiles(); if (!S.layers.access) { S.layers.access = true; applyLayers(); renderLayersTab(); } $('#dirTo').click(); };
+  $('#stepFree').onclick = () => { S.requestedKind = 'stepfree'; $('#dirTo').click(); };
   const near = S.buildings.filter((x) => x.id !== b.id).map((x) => ({ x, d: distance(b, x) })).sort((p, q) => p.d - q.d).slice(0, 4);
   $('#nearby').innerHTML = near.map(({ x, d }) => `<li><span class="code">${esc(x.id)}</span><button class="link" data-b="${esc(x.id)}">${esc(x.name)}</button><span class="muted">${formatDistance(d, S.units)}</span></li>`).join('');
 }
@@ -481,7 +488,10 @@ function accessCard(b) {
 function renderHome() {
   $('#nearestOut').innerHTML = '';
   const li = (id) => { const b = byId.get(id); return b ? `<li><span class="code">${esc(b.id)}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}</button></li>` : ''; };
-  $('#favs').innerHTML = S.favs.map(li).join('') || '<li class="muted">Tap ☆ on a building to save it.</li>';
+  const home = byId.get(S.settings.home);
+  $('#favs').innerHTML = (home ? `<li><span class="code">🏠</span><button class="link" data-b="${esc(home.id)}">${esc(home.name)}<div class="sub muted">Home</div></button>
+      <button class="btn small" data-go='${esc(JSON.stringify({ type: 'building', id: home.id }))}'>Directions home</button></li>` : '')
+    + (S.favs.map(li).join('') || (home ? '' : '<li class="muted">Tap ☆ on a building to save it, or set your home in My account.</li>'));
   $('#recent').innerHTML = S.recent.map(li).join('') || '<li class="muted">Nothing yet.</li>';
 }
 
@@ -552,54 +562,79 @@ attachTypeahead($('#from'), $('#from').nextElementSibling, (it) => setPlace('fro
 attachTypeahead($('#to'), $('#to').nextElementSibling, (it) => setPlace('to', it), { allowMe: true });
 $('#swapBtn').onclick = () => { const f = S.from; S.from = S.to; S.to = f; $('#from').value = placeLabel(S.from); $('#to').value = placeLabel(S.to); updateRoute(); };
 
-const PROFILE_HINT = {
-  standard: 'Shortest walking route.',
-  accessible: 'Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; uses a slower pace for time estimates.',
-  night: 'Prefers lit paths and paths near emergency phones.',
-};
-function renderProfiles() {
-  renderSeg('#profiles', Object.entries(PROFILES).map(([k, p]) => [k, (k === 'accessible' ? '♿ ' : k === 'night' ? '🌙 ' : '🚶 ') + p.label]), S.profile, (v) => {
-    S.profile = v;
-    if (v === 'accessible' && !S.layers.access) { S.layers.access = true; applyLayers(); renderLayersTab(); }
-    renderProfiles(); updateRoute();
-  });
-  let hint = PROFILE_HINT[S.profile];
-  if (S.graphSource === 'seed' && S.profile !== 'standard') hint += ' Load OpenStreetMap path data (npm run fetch-osm) for full stairs and lighting detail.';
-  $('#profileHint').innerHTML = esc(hint) + (S.profile === 'accessible'
-    ? `<label class="check"><input type="checkbox" id="strictAccess" ${S.settings.strictAccess ? 'checked' : ''}/> Also avoid steep slopes and rough surfaces (gravel, grass)</label>` : '');
-  const strict = $('#strictAccess');
-  if (strict) strict.onchange = () => { acc.update((d) => { d.settings.strictAccess = strict.checked; }); walkCache.clear(); updateRoute({ fit: false }); };
-}
+const ROUTE_COLORS = { fastest: '#2563eb', alternate: '#0d9488', stepfree: '#7c3aed', lit: '#1e3a8a' };
+const LEGACY_MODE = { standard: 'fastest', accessible: 'stepfree', night: 'lit' };
 
-function drawRoute(r) {
+/** Which option to pick first: the student's preference, best-lit after dark if they asked for that. */
+function preferredKind() {
+  const pref = S.settings.preferredRoute ?? 'fastest';
+  if (pref !== 'stepfree' && (S.settings.autoNight ?? true) && isDarkOutside()) return 'lit';
+  return pref;
+}
+const optionFor = (kind) => S.options?.find((o) => o.kind === kind || o.also.includes(kind));
+
+function drawRoutes() {
   layers.route.clearLayers();
-  if (!r?.res) return;
+  const sel = S.options?.find((o) => o.kind === S.routeKind);
+  if (!sel) return;
+  for (const o of S.options) if (o !== sel) { // other choices: grey, tap to pick
+    const line = L.polyline(o.r.latlngs, { color: '#94a3b8', weight: 6, opacity: 0.85 })
+      .bindTooltip(`${o.icon} ${o.label} · ${formatMinutes(o.minutes)}`, { sticky: true }).on('click', () => selectRoute(o.kind)).addTo(layers.route);
+    line.bringToBack();
+  }
+  const r = sel.r;
   L.polyline(r.latlngs, { color: '#fff', weight: 10, opacity: 0.9 }).addTo(layers.route);
-  L.polyline(r.latlngs, { color: S.profile === 'accessible' ? '#7c3aed' : S.profile === 'night' ? '#0f172a' : '#2563eb', weight: 6 }).addTo(layers.route);
+  L.polyline(r.latlngs, { color: ROUTE_COLORS[sel.kind], weight: 6 }).addTo(layers.route);
   r.res.edges.forEach((e, i) => { if (e.stairs) L.polyline([r.latlngs[i], r.latlngs[i + 1]], { color: '#dc2626', weight: 6, dashArray: '4 6' }).bindTooltip('Stairs').addTo(layers.route); });
   L.circleMarker(r.latlngs[0], { radius: 8, color: '#111', weight: 3, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('Start: ' + r.a.label).addTo(layers.route);
   L.marker(r.latlngs.at(-1), { icon: L.divIcon({ className: '', html: '<div class="numark">★</div>', iconSize: [28, 28] }), interactive: false }).addTo(layers.route);
 }
-function updateRoute({ fit = true } = {}) {
+function selectRoute(kind) {
+  const o = optionFor(kind); if (!o) return;
+  S.routeKind = o.kind; S.lastRoute = o.r;
+  if (o.kind === 'stepfree' && !S.layers.access) { S.layers.access = true; applyLayers(); renderLayersTab(); }
+  renderRouteOut(); drawRoutes(); writeHash();
+}
+
+function updateRoute({ fit = true, keepChoice = false } = {}) {
   const out = $('#routeOut');
   writeHash();
-  if (!S.from || !S.to) { S.lastRoute = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">Choose where you’re starting and where you’re going. Tip: right-click or long-press the map to drop a pin.</p>'; return; }
+  if (!S.from || !S.to) { S.lastRoute = null; S.options = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">Choose where you’re starting and where you’re going. Tip: right-click or long-press the map to drop a pin.</p>'; return; }
   if (S.from.type === 'me' && !S.me) { out.innerHTML = '<p class="hint">Waiting for your location…</p>'; return; }
-  const r = computeRoute(S.from, S.to);
-  S.lastRoute = r;
-  if (r?.far) { layers.route.clearLayers(); out.innerHTML = '<p class="hint">Walking directions cover the Towson campus and the streets right around it. That spot is too far from campus paths. Try a closer starting point.</p>'; return; }
-  if (!r?.res) { layers.route.clearLayers(); out.innerHTML = '<p class="hint">No route found with these settings. Try another route type.</p>'; return; }
-  drawRoute(r);
-  if (fit) map.flyToBounds(L.latLngBounds(r.latlngs), { ...padding(), maxZoom: 18, duration: 0.6 });
+  const fastest = computeRoute(S.from, S.to, 'standard');
+  if (fastest?.far) { S.options = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">Walking directions cover the Towson campus and the streets right around it. That spot is too far from campus paths. Try a closer starting point.</p>'; return; }
+  S.options = routeOptions((profile, extra) => (profile === 'standard' && !extra ? fastest : computeRoute(S.from, S.to, profile, extra)));
+  if (!S.options.length) { S.lastRoute = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">No route found. If “Always avoid stairs” is on, there may be no step-free way — try turning it off in My account.</p>'; return; }
+  const want = keepChoice && optionFor(S.routeKind) ? S.routeKind : (S.requestedKind ?? preferredKind());
+  S.requestedKind = null;
+  const sel = optionFor(want) ?? S.options[0];
+  S.routeKind = sel.kind; S.lastRoute = sel.r;
+  drawRoutes();
+  if (fit) map.flyToBounds(L.latLngBounds(S.options.flatMap((o) => o.r.latlngs)), { ...padding(), maxZoom: 18, duration: 0.6 });
+  renderRouteOut();
+}
+
+function renderRouteOut() {
+  const out = $('#routeOut');
+  const sel = S.options.find((o) => o.kind === S.routeKind), r = sel.r;
   const arrive = new Date(Date.now() + r.minutes * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const stairs = r.res.edges.filter((e) => e.stairs).length;
+  const stepfree = S.options.find((o) => !o.stairs);
   out.innerHTML = `
+    <div class="route-opts" role="radiogroup" aria-label="Route options">
+      ${S.options.map((o) => `<button class="ropt" role="radio" aria-checked="${o === sel}" data-k="${o.kind}" style="--rc:${ROUTE_COLORS[o.kind]}">
+        <span class="ropt-top"><b>${formatMinutes(o.minutes)}</b><span class="ropt-name">${o.icon} ${esc(o.label)}</span></span>
+        <span class="ropt-meta">${formatDistance(o.r.res.dist, S.units)} · ${o.stairs ? `${o.stairs} stair segment${o.stairs > 1 ? 's' : ''}` : 'no stairs'}${o.via ? ` · via ${esc(o.via)}` : ''}</span>
+        ${o.badges.length ? `<span class="ropt-badges">${o.badges.map((b) => `<span class="rbadge${b === 'Quickest' ? ' q' : ''}">${esc(b)}</span>`).join('')}</span>` : ''}
+      </button>`).join('')}
+    </div>
+    ${S.options.length === 1 ? '<p class="hint">This is the only sensible way here — the other route types follow the same path.</p>' : ''}
     <div class="summary"><span class="big">${formatMinutes(r.minutes)}</span><span class="muted">${formatDistance(r.res.dist, S.units)} · arrive ${arrive}</span></div>
-    ${stairs ? `<p class="hint">⚠️ Includes ${stairs} stair segment${stairs > 1 ? 's' : ''} (red dashes). Choose ♿ Accessible to avoid them.</p>` : ''}
+    ${sel.stairs && stepfree ? `<p class="hint">⚠️ Includes stairs (red dashes). The ${esc(stepfree.label.toLowerCase())} option avoids them.</p>` : ''}
     <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ Stop' : '▶ Start walking'}</button><button class="btn" id="shareRoute">Share route</button><button class="btn" id="printRoute">Print</button></div>
     <ol class="steps">${r.steps.map((s, i) => `<li data-step="${i}"><span class="ico">${s.type === 'arrive' ? '★' : s.type === 'depart' ? '●' : /left/.test(s.text) ? '↰' : /right/.test(s.text) ? '↱' : '↑'}</span>
       <span>${esc(s.text)}</span><span class="d">${s.dist ? formatDistance(s.dist, S.units) : ''}</span></li>`).join('')}</ol>
     ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : '<p class="hint">Walkway data © OpenStreetMap contributors.</p>'}`;
+  out.querySelector('.route-opts').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) selectRoute(k); };
   $('#routeOut .steps').onclick = (e) => { const li = e.target.closest('[data-step]'); if (li) { const s = r.steps[+li.dataset.step]; flyTo([s.at.lat, s.at.lng], 19); } };
   $('#shareRoute').onclick = () => share(location.href, `Walk to ${r.b.label}`);
   $('#printRoute').onclick = () => window.print();
@@ -614,7 +649,7 @@ function toggleLive() {
     startWatch(); toast(acc.user ? 'Following your location — this walk counts toward your goals.' : 'Following your location. Keep the app open.');
     tracker.start('nav').catch(() => {});
   } else if (tracker.source === 'nav') tracker.stop();
-  updateRoute({ fit: !S.live });
+  updateRoute({ fit: !S.live, keepChoice: true });
 }
 function onLiveUpdate() {
   const r = S.lastRoute; if (!S.live || !r?.res) return;
@@ -622,8 +657,8 @@ function onLiveUpdate() {
   const off = Math.min(...r.latlngs.map(([lat, lng]) => distance(S.me, { lat, lng })));
   const end = { lat: r.latlngs.at(-1)[0], lng: r.latlngs.at(-1)[1] };
   if (distance(S.me, end) < 20) { S.live = false; if (tracker.source === 'nav') tracker.stop(); toast(`You’ve arrived at ${r.b.label} 🎉`, 4000); updateRoute({ fit: false }); return; }
-  if (off > 40) { toast('Off route — rerouting'); updateRoute({ fit: false }); }
-  else if (S.from?.type === 'me') updateRoute({ fit: false });
+  if (off > 40) { toast('Off route — rerouting'); updateRoute({ fit: false, keepChoice: true }); }
+  else if (S.from?.type === 'me') updateRoute({ fit: false, keepChoice: true });
 }
 
 // ---------------------------------------------------------------- location
@@ -754,10 +789,6 @@ function renderLayersTab() {
   renderAccessLegend();
   $('#permit').innerHTML = '<option value="">All permits</option>' + Object.entries(PERMIT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   $('#permit').onchange = (e) => { S.permit = e.target.value; drawParking(); };
-  $('#pace').value = String(S.pace);
-  $('#pace').onchange = (e) => { S.pace = +e.target.value; store.set('pace', S.pace); walkCache.clear(); if (S.lastRoute) updateRoute({ fit: false }); };
-  $('#units').value = S.units;
-  $('#units').onchange = (e) => { S.units = e.target.value; store.set('units', S.units); if (S.lastRoute) updateRoute({ fit: false }); };
   $('#shuttleNote').innerHTML = `Shuttle lines shown are a sample. <a href="${LIVE_SHUTTLE_URL}" target="_blank" rel="noopener">Official shuttle info ↗</a>`;
   const phones = safety.length;
   $('#dataNote').innerHTML = (S.graphSource === 'osm'
@@ -781,12 +812,12 @@ function renderAccessLegend() {
 }
 
 // ---------------------------------------------------------------- theme
-function applyTheme(t) {
-  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
-  store.set('theme', t ?? null);
+/** theme: 'system' | 'light' | 'dark' (a My account preference) */
+function applyTheme(theme = S.settings.theme ?? store.get('theme', null) ?? 'system') {
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
   if (S.basemap === 'map' && selfHosted) setBasemap('map'); // switch light/dark map style
 }
-$('#themeBtn').onclick = () => applyTheme(isDark() ? 'light' : 'dark');
 
 // ---------------------------------------------------------------- URL state
 function encPlace(p) { return !p ? '' : p.type === 'me' ? 'me' : p.type === 'building' ? p.id : p.type === 'parking' ? 'park:' + p.id : `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`; }
@@ -801,10 +832,10 @@ let applyingHash = false;
 function writeHash() {
   if (applyingHash) return;
   const p = new URLSearchParams();
-  if (S.tab === 'directions') { if (S.from) p.set('from', encPlace(S.from)); if (S.to) p.set('to', encPlace(S.to)); if (S.profile !== 'standard') p.set('mode', S.profile); }
+  if (S.tab === 'directions') { if (S.from) p.set('from', encPlace(S.from)); if (S.to) p.set('to', encPlace(S.to)); if (S.routeKind && S.routeKind !== preferredKind()) p.set('route', S.routeKind); }
   else if (S.tab === 'schedule') { p.set('tab', 'classes'); p.set('day', S.day); }
   else if (S.tab === 'layers') p.set('tab', 'layers');
-  else if (S.tab === 'me') p.set('tab', 'me');
+  else if (S.tab === 'account') p.set('tab', 'account');
   else if (S.selected) { p.set('b', S.selected); if (S.room) p.set('room', S.room.room); }
   const h = p.toString();
   history.replaceState(null, '', location.pathname + location.search + (h ? '#' + h : ''));
@@ -814,8 +845,8 @@ function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   try {
     if (p.has('from') || p.has('to')) {
-      if (p.get('mode') in PROFILES) S.profile = p.get('mode');
-      renderProfiles();
+      const k = p.get('route') ?? LEGACY_MODE[p.get('mode')];
+      if (k) S.requestedKind = k;
       S.from = decPlace(p.get('from')); S.to = decPlace(p.get('to'));
       $('#from').value = placeLabel(S.from); $('#to').value = placeLabel(S.to);
       if (S.from?.type === 'me' || S.to?.type === 'me') startWatch();
@@ -824,7 +855,7 @@ function readHash() {
       if (WEEKDAYS.includes(p.get('day'))) S.day = p.get('day');
       showTab('schedule');
     } else if (p.get('tab') === 'layers') showTab('layers');
-    else if (p.get('tab') === 'me') showTab('me');
+    else if (p.get('tab') === 'account' || p.get('tab') === 'me') showTab('account');
     else if (p.has('b') && byId.has(p.get('b'))) {
       const room = p.get('room') ? search(index, `${p.get('b')} ${p.get('room')}`)[0]?.room : null;
       selectBuilding(p.get('b'), { room });
@@ -868,26 +899,39 @@ async function initAccounts() {
   await acc.init();
   tracker = createTracker({
     acc,
-    onUpdate: (_, err) => { if (err) toast(err); if (S.tab === 'me') meView.render(); },
+    onUpdate: (_, err) => { if (err) toast(err); if (S.tab === 'account') meView.render(); },
     onGoal: () => {
       toast('🎉 You hit your daily goal!', 4000);
       if ('Notification' in window && Notification.permission === 'granted') navigator.serviceWorker?.getRegistration().then((r) => r?.showNotification('Goal reached 🎉', { body: 'You hit your TigerPath goal for today.', icon: 'icon.svg', tag: 'goal' }));
     },
   });
-  meView = createMeView({ el: $('#meOut'), acc, tracker, toast, backendKind: acc.backend.kind });
+  meView = createMeView({ el: $('#meOut'), welcomeEl: $('#welcome'), acc, tracker, toast, buildings: S.buildings, onPrefs });
   reminders = createReminders({
     acc, walkMinutes, buildingName: (id) => byId.get(id)?.name ?? id,
     onFire: (r, { title, body, url }) => showBanner(title, body, url),
   });
   acc.onChange(() => {
     walkCache.clear();
-    if (S.tab === 'me') meView.render();
+    if (S.tab === 'account') meView.render();
     if (S.tab === 'schedule') renderSchedule();
     if (!S.selected) renderHome();
     renderReminderCard();
-    $('#tab-me').textContent = acc.user ? 'Me' : 'Sign in';
+    renderAvatar(); applyTheme();
   });
-  $('#tab-me').textContent = acc.user ? 'Me' : 'Sign in';
+  renderAvatar();
+}
+function renderAvatar() {
+  const a = $('#acctAvatar');
+  if (acc.user) { a.textContent = acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase(); a.className = 'initials'; }
+  else { a.textContent = '👤'; a.className = ''; }
+  $('#acctBtn').title = acc.user ? `My account (${acc.user.name})` : 'My account (guest)';
+}
+/** Apply a preference the student just changed in My account. */
+function onPrefs(key) {
+  if (key === 'theme') applyTheme();
+  if (key === 'home') renderHome();
+  if (['pace', 'avoidStairs', 'strictAccess'].includes(key)) walkCache.clear();
+  if (['pace', 'units', 'avoidStairs', 'strictAccess', 'preferredRoute', 'autoNight'].includes(key) && S.from && S.to) updateRoute({ fit: false });
 }
 
 function showBanner(title, body, url) {
@@ -924,15 +968,18 @@ function renderReminderCard() {
 window.__tigerpath = { map }; // for the browser smoke test
 
 (async function boot() {
-  const theme = store.get('theme', null); if (theme) document.documentElement.dataset.theme = theme;
   await loadBasemapMeta();
   setBasemap(S.basemap);
   await loadOsm();
   buildGraph();
   await initAccounts();
+  applyTheme();
+  // Welcome screen first — unless signed in, already chose guest this session, or opened a shared link
+  let guestSession = false; try { guestSession = !!sessionStorage.getItem('tigerpath.guestSession'); } catch { /* ignore */ }
+  if (!acc.user && !guestSession && !location.hash && !EDIT) meView.showWelcome();
   drawBuildings(); drawParking(); drawShuttles(); drawSafety(); drawOutlines(); drawAccess();
   applyLayers();
-  renderChips(); renderQuick(); renderHome(); renderProfiles(); renderLayersTab(); initScheduleForm(); renderReminderCard();
+  renderChips(); renderQuick(); renderHome(); renderLayersTab(); initScheduleForm(); renderReminderCard();
   readHash();
   if (!location.hash) updateRoute({ fit: false });
   window.addEventListener('hashchange', readHash);

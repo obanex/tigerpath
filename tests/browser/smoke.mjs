@@ -51,6 +51,7 @@ for (const t of targets.filter((t) => !only || t.name.includes(only))) {
   try {
     await page.goto(URL, { waitUntil: 'load' });
     await page.waitForSelector('.bmark', { state: 'attached', timeout: 20000 });
+    if (await page.locator('#guestBtn').isVisible().catch(() => false)) await page.tap('#guestBtn'); // welcome screen
     await snapshot('load');
     await page.tap('.chip[data-c="academic"]');
     await snapshot('academic');

@@ -43,18 +43,25 @@ function weekChart(days, goal) {
     ${days.map((d) => `<tr><td>${d.day}</td><td>${fmtInt(d.steps)}</td><td>${fmtMiles(d.meters)}</td></tr>`).join('')}</table>`;
 }
 
-export function createMeView({ el, acc, tracker, toast, backendKind }) {
+const PREF_ROUTES = [['fastest', '🚶 Fastest'], ['stepfree', '♿ Step-free'], ['lit', '🌙 Best lit']];
+const THEMES = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
+const seg = (name, options, value) => `<div class="seg" role="radiogroup" data-pref="${name}">${options.map(([v, l]) =>
+  `<button type="button" role="radio" aria-checked="${v === value}" data-v="${v}">${l}</button>`).join('')}</div>`;
+
+/**
+ * el: account view container · welcomeEl: welcome overlay · buildings: for the "home" picker
+ * onPrefs(key): called after a preference changes so the app can apply it
+ */
+export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {} }) {
   let mode = 'signup';
 
-  function signedOut() {
-    el.innerHTML = `
-      <h2 class="me-title">Your TigerPath account</h2>
-      <ul class="perks"><li>🎯 Set daily step and mile goals</li><li>👟 Track your walks around campus</li>
-        <li>🔔 Class reminders on your schedule</li><li>📱 Your classes and saved places, in one place</li></ul>
+  /** Sign-up / sign-in form, used on the welcome screen. */
+  function authForm(host, onDone) {
+    host.innerHTML = `
       <div class="seg" role="tablist" aria-label="Account">
         <button role="tab" aria-selected="${mode === 'signup'}" aria-checked="${mode === 'signup'}" data-mode="signup">Create account</button>
         <button role="tab" aria-selected="${mode === 'signin'}" aria-checked="${mode === 'signin'}" data-mode="signin">Sign in</button></div>
-      <form id="authForm" novalidate>
+      <form class="authForm" novalidate>
         ${mode === 'signup' ? '<div class="field"><label for="aName">Name</label><input id="aName" autocomplete="name" required /></div>' : ''}
         <div class="field"><label for="aEmail">Email</label><input id="aEmail" type="email" autocomplete="email" placeholder="you@students.towson.edu" required /></div>
         <div class="field"><label for="aPass">Password</label><input id="aPass" type="password" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" minlength="8" required />
@@ -62,22 +69,73 @@ export function createMeView({ el, acc, tracker, toast, backendKind }) {
         <p class="form-error" id="authErr" role="alert" hidden></p>
         <button class="btn primary wide" type="submit">${mode === 'signup' ? 'Create account' : 'Sign in'}</button>
       </form>
-      <p class="hint">${backendKind === 'cloud'
-        ? 'Your account syncs across your devices.'
-        : 'Accounts are saved on this device only. Your password is hashed and never leaves your phone.'}</p>`;
-    el.querySelector('.seg').onclick = (e) => { const m = e.target.closest('button')?.dataset.mode; if (m) { mode = m; render(); } };
-    el.querySelector('#authForm').onsubmit = async (e) => {
+      <p class="hint center">${acc.backend.kind === 'cloud' ? 'Your account syncs across your devices.'
+        : 'Your account is saved on this device. Your password is hashed and never leaves your phone.'}</p>`;
+    host.querySelector('.seg').onclick = (e) => { const m = e.target.closest('button')?.dataset.mode; if (m) { mode = m; authForm(host, onDone); } };
+    host.querySelector('form').onsubmit = async (e) => {
       e.preventDefault();
-      const err = el.querySelector('#authErr'); err.hidden = true;
+      const err = host.querySelector('#authErr'); err.hidden = true;
       const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
-      const fields = { name: el.querySelector('#aName')?.value, email: el.querySelector('#aEmail').value, password: el.querySelector('#aPass').value };
+      const fields = { name: host.querySelector('#aName')?.value, email: host.querySelector('#aEmail').value, password: host.querySelector('#aPass').value };
       try {
         const res = mode === 'signup' ? await acc.signUp(fields) : await acc.signIn(fields);
         if (res?.needsConfirmation) { err.textContent = `Check ${res.email} for a confirmation link, then sign in.`; err.hidden = false; mode = 'signin'; }
-        else toast(mode === 'signup' ? `Welcome, ${acc.user.name}!` : `Welcome back, ${acc.user.name}!`);
+        else { toast(mode === 'signup' ? `Welcome, ${acc.user.name}!` : `Welcome back, ${acc.user.name}!`); onDone?.(); }
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
       finally { btn.disabled = false; }
     };
+  }
+
+  function showWelcome() {
+    authForm(welcomeEl.querySelector('#welcomeAuth'), hideWelcome);
+    welcomeEl.hidden = false;
+    welcomeEl.querySelector('#guestBtn').onclick = () => { try { sessionStorage.setItem('tigerpath.guestSession', '1'); } catch { /* ignore */ } hideWelcome(); };
+    if (matchMedia('(pointer: fine)').matches) setTimeout(() => welcomeEl.querySelector('input')?.focus(), 50); // no surprise keyboard on phones
+  }
+  function hideWelcome() { welcomeEl.hidden = true; }
+
+  function preferences() {
+    const st = acc.data.settings;
+    const homeOpts = [...buildings].sort((a, b) => (a.category === 'residence' ? 0 : 1) - (b.category === 'residence' ? 0 : 1) || a.name.localeCompare(b.name));
+    return `<details class="card" id="prefCard" ${acc.user ? '' : 'open'}><summary>🎛️ Preferences</summary>
+      <div class="field"><span class="label">Preferred route</span>${seg('preferredRoute', PREF_ROUTES, st.preferredRoute ?? 'fastest')}
+        <span class="hint">Directions always show every option; this one is picked first.</span></div>
+      <label class="check"><input type="checkbox" data-pref="avoidStairs" ${st.avoidStairs ? 'checked' : ''}/> Always avoid stairs</label>
+      <label class="check"><input type="checkbox" data-pref="autoNight" ${st.autoNight ?? true ? 'checked' : ''}/> Pick the best-lit route after dark</label>
+      <label class="check"><input type="checkbox" data-pref="strictAccess" ${st.strictAccess ? 'checked' : ''}/> Step-free routes also avoid steep slopes and gravel/grass</label>
+      <div class="row">
+        <div class="field"><label for="pPace">Walking pace</label><select id="pPace" data-pref="pace">
+          ${[['1', 'Wheelchair / mobility aid'], ['1.1', 'Relaxed'], ['1.34', 'Typical'], ['1.6', 'Brisk']].map(([v, l]) => `<option value="${v}" ${String(st.pace ?? 1.34) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label for="pUnits">Units</label><select id="pUnits" data-pref="units">
+          ${[['imperial', 'Feet / miles'], ['metric', 'Meters / km']].map(([v, l]) => `<option value="${v}" ${(st.units ?? 'imperial') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label for="pHome">Home on campus</label><select id="pHome" data-pref="home">
+        <option value="">None</option>${homeOpts.map((b) => `<option value="${esc(b.id)}" ${st.home === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
+        <span class="hint">Adds a one-tap “Directions home” button.</span></div>
+      <div class="field"><span class="label">Theme</span>${seg('theme', THEMES, st.theme ?? 'system')}</div>
+    </details>`;
+  }
+
+  function bindPrefs() {
+    const set = (key, value) => { acc.update((d) => { d.settings[key] = value; }); onPrefs(key); };
+    el.querySelectorAll('.seg[data-pref]').forEach((g) => { g.onclick = (e) => {
+      const v = e.target.closest('button')?.dataset.v; if (!v) return;
+      g.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === v)));
+      set(g.dataset.pref, v);
+    }; });
+    el.querySelectorAll('input[type=checkbox][data-pref]').forEach((c) => { c.onchange = () => set(c.dataset.pref, c.checked); });
+    el.querySelectorAll('select[data-pref]').forEach((s) => { s.onchange = () => set(s.dataset.pref, s.dataset.pref === 'pace' ? +s.value : s.value || null); });
+  }
+
+  function guestView() {
+    el.innerHTML = `
+      <div class="me-head"><div class="avatar big" aria-hidden="true">👤</div><div class="grow"><h2 class="me-title">Guest</h2>
+        <span class="muted small">Your settings are saved on this device.</span></div></div>
+      <button class="btn primary wide" id="openWelcome">Sign in or create an account</button>
+      <ul class="perks"><li>🎯 Daily step and mile goals</li><li>👟 Track your walks around campus</li><li>☁️ Your classes and settings, kept with your account</li></ul>
+      ${preferences()}`;
+    el.querySelector('#openWelcome').onclick = showWelcome;
+    bindPrefs();
   }
 
   function signedIn() {
@@ -90,8 +148,10 @@ export function createMeView({ el, acc, tracker, toast, backendKind }) {
     const minutes = Math.round((todayTotals?.seconds ?? 0) / 60);
     const ft = settings.heightCm ? Math.floor(settings.heightCm / 30.48) : '';
     const inch = settings.heightCm ? Math.round((settings.heightCm / 2.54) % 12) : '';
+    const initials = acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
     el.innerHTML = `
-      <div class="me-head"><div><h2 class="me-title">Hi, ${esc(acc.user.name.split(' ')[0])} 👋</h2><span class="muted small">${esc(acc.user.email)}</span></div>
+      <div class="me-head"><div class="avatar big" aria-hidden="true">${esc(initials)}</div>
+        <div class="grow"><h2 class="me-title">${esc(acc.user.name)}</h2><span class="muted small">${esc(acc.user.email)}</span></div>
         <button class="btn small" id="signOut">Sign out</button></div>
       <h3 class="h">Today</h3>
       <div class="rings">
@@ -112,6 +172,8 @@ export function createMeView({ el, acc, tracker, toast, backendKind }) {
       <h3 class="h">Last 7 days</h3>
       ${weekChart(lastDays(activity, 7), goals.steps)}
 
+      ${preferences()}
+
       <details class="card" id="goalCard"><summary>🎯 Goals</summary>
         <form id="goalForm">
           <div class="row">
@@ -129,6 +191,7 @@ export function createMeView({ el, acc, tracker, toast, backendKind }) {
         <div class="btn-row"><button class="btn" id="exportData">Download my data</button><button class="btn danger" id="deleteAcct">Delete account</button></div>
       </details>`;
 
+    bindPrefs();
     el.querySelector('#signOut').onclick = async () => { if (tracker.running) tracker.stop(); await acc.signOut(); toast('Signed out'); };
     el.querySelector('#trackBtn').onclick = async () => {
       if (tracker.running) {
@@ -172,12 +235,14 @@ export function createMeView({ el, acc, tracker, toast, backendKind }) {
 
   function render() {
     // don't wipe a form the student is typing in
-    if (el.contains(document.activeElement) && document.activeElement.matches('input')) {
+    if (el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=text], input:not([type])')) {
       const s = el.querySelector('#trackStatus'), live = tracker.status();
       if (s && live) s.textContent = `Tracking · ${fmtMiles(live.meters)} mi · ${fmtInt(live.steps)} steps`;
       return;
     }
-    if (acc.user) signedIn(); else signedOut();
+    const prefsOpen = el.querySelector('#prefCard')?.open;
+    if (acc.user) signedIn(); else guestView();
+    if (prefsOpen != null && el.querySelector('#prefCard')) el.querySelector('#prefCard').open = prefsOpen;
   }
-  return { render };
+  return { render, showWelcome, hideWelcome };
 }

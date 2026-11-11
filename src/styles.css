@@ -167,6 +167,39 @@ table.hours td { padding: 3px 0; } table.hours tr.today { font-weight: 700; }
 .editor h2 { margin: 0 0 6px; font-size: 1rem; }
 .editor ul { max-height: 160px; overflow: auto; font-size: .8rem; padding-left: 16px; }
 
+/* ---------- account button, welcome ---------- */
+.acct-btn { margin-left: auto; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg2); cursor: pointer; display: grid; place-items: center; font-size: 1.1rem; padding: 0; }
+.acct-btn:hover { border-color: var(--gold); }
+.acct-btn[aria-pressed="true"] { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+.acct-btn .initials, .avatar { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: var(--black); color: var(--gold); font: 800 .8rem/1 system-ui, sans-serif; }
+.avatar.big { width: 52px; height: 52px; flex: none; font-size: 1.1rem; background: var(--black); }
+.me-head .grow { flex: 1; min-width: 0; }
+.me-head .grow .small { display: block; overflow: hidden; text-overflow: ellipsis; }
+.label { font-size: .78rem; font-weight: 600; color: var(--fg2); }
+.center { text-align: center; }
+#welcome { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 16px; overflow-y: auto;
+  background: radial-gradient(circle at 20% 10%, rgb(255 187 0 / .25), transparent 45%), rgb(10 10 10 / .72); backdrop-filter: blur(3px); }
+.welcome-card { width: min(420px, 100%); background: var(--bg); color: var(--fg); border-radius: 18px; box-shadow: var(--shadow); padding: 22px 20px 16px; border-top: 6px solid var(--gold); }
+.welcome-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.welcome-brand .logo { width: 52px; height: 52px; font-size: 1.1rem; }
+.welcome-brand h2 { margin: 0; font-size: 1.5rem; } .welcome-brand p { margin: 2px 0 0; color: var(--fg2); }
+.or { display: flex; align-items: center; gap: 10px; color: var(--fg2); font-size: .8rem; margin: 12px 0 0; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+/* ---------- route options ---------- */
+.route-opts { display: grid; gap: 8px; margin-top: 12px; }
+.ropt { display: grid; gap: 3px; text-align: left; padding: 10px 12px 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; position: relative; }
+.ropt::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px; border-radius: 0 4px 4px 0; background: #94a3b8; }
+.ropt[aria-checked="true"] { border-color: var(--rc); box-shadow: 0 0 0 2px var(--rc) inset; }
+.ropt[aria-checked="true"]::before { background: var(--rc); }
+.ropt:hover { background: var(--bg2); }
+.ropt-top { display: flex; align-items: baseline; gap: 10px; } .ropt-top b { font-size: 1.15rem; }
+.ropt-name { font-weight: 600; font-size: .9rem; }
+.ropt-meta { font-size: .8rem; color: var(--fg2); }
+.ropt-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.rbadge { font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--bg3); color: var(--fg); }
+.rbadge.q { background: var(--gold); color: var(--gold-ink); }
+
 /* ---------- Me tab ---------- */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .small { font-size: .8rem; }

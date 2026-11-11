@@ -142,6 +142,7 @@ export function edgeCost(edge, profile, ctx = {}) {
     if (edge.wheelchair === 'limited') f *= 1.5;
     if (edge.ramp || edge.wheelchair === 'yes') f *= 0.9; // known-good: mild preference
   } else if (edge.stairs) {
+    if (ctx.noStairs) return Infinity; // "always avoid stairs" preference
     f *= 1.15; // stairs are a bit slower even for walkers
   }
   if (profile === 'night') {
@@ -168,8 +169,9 @@ export function route(g, from, to, profile = 'standard', ctx = {}) {
     if (closed.has(cur)) continue;
     closed.add(cur);
     for (const e of g.adj.get(cur)) {
-      const c = edgeCost(e, profile, ctx);
+      let c = edgeCost(e, profile, ctx);
       if (c === Infinity) continue;
+      if (ctx.avoid?.has(`${cur}|${e.to}`)) c *= ctx.avoidFactor ?? 1.8; // used to find a genuinely different alternative
       const tentative = gScore.get(cur) + e.dist * c;
       if (tentative < (gScore.get(e.to) ?? Infinity)) {
         gScore.set(e.to, tentative);

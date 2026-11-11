@@ -6,6 +6,9 @@ A campus map and wayfinding app for Towson University.
 
 | Feature | What it does |
 |---|---|
+| Welcome screen | Sign in or create an account when the app opens, or continue as a guest |
+| My account | Activity, goals and **preferences**: preferred route, always avoid stairs, best-lit after dark, walking pace (incl. wheelchair), units, home building, theme |
+| Route choices | Every trip shows the options side by side (fastest, another way, step-free, best lit) with time, distance and stairs; the quickest is marked, tap any to follow it |
 | Walking directions | Turn-by-turn steps with walking time and arrival time |
 | Accessible routing | Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; slower pace for time estimates |
 | Well-lit night routing | Prefers lit paths and paths near emergency phones |
@@ -18,7 +21,6 @@ A campus map and wayfinding app for Towson University.
 | Map layers | Parking (filter by permit), shuttle, emergency phones/AEDs, building footprints, satellite |
 | Mobile | Bottom-sheet layout, installable to the home screen, works offline for areas you've viewed |
 | Accessibility of the app itself | Dark mode, keyboard navigation and screen-reader support |
-| Student accounts | On-device now, or cloud sync with Supabase (see below) |
 | Step & mile goals | Daily goals, progress rings, streaks and a 7-day chart; counts walks around campus |
 | Class reminders | Students choose how early; can add walking time from the previous class |
 | Accessible trails layer | Step-free paths, stairs and curbs to avoid, rough surfaces, curb cuts, accessible parking, ramps/elevators/entrances |
@@ -59,7 +61,7 @@ TigerPath's ♿ and 🌙 routing. A Towson GIS class or mapathon would be a good
 
 ## Accounts
 
-Students create an account in the **Me** tab. Their classes, saved places, goals, activity and reminder
+Students sign in or create an account on the welcome screen (or later from the account button in the header). Their classes, saved places, goals, activity and reminder
 settings follow the account. Anything they did before signing up comes with them.
 
 - **On-device (default):** works with no server. Passwords are salted and hashed (PBKDF2) and never leave the phone,

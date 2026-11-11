@@ -18,14 +18,13 @@
     <header class="brand">
       <div class="logo" aria-hidden="true">TU</div>
       <div><h1>TigerPath</h1><p>Towson University campus map</p></div>
-      <button class="icon-btn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode">🌓</button>
+      <button class="acct-btn" id="acctBtn" title="My account" aria-label="My account"><span id="acctAvatar" aria-hidden="true">👤</span></button>
     </header>
 
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-explore" aria-controls="view-explore" aria-selected="true">Explore</button>
       <button role="tab" id="tab-directions" aria-controls="view-directions" aria-selected="false">Directions</button>
       <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">Classes</button>
-      <button role="tab" id="tab-me" aria-controls="view-me" aria-selected="false">Me</button>
       <button role="tab" id="tab-layers" aria-controls="view-layers" aria-selected="false">Layers</button>
     </nav>
 
@@ -61,8 +60,6 @@
             <input id="to" placeholder="Building, room, or department" autocomplete="off" />
             <ul class="results" hidden></ul></div>
         </div>
-        <div class="seg" role="radiogroup" aria-label="Route type" id="profiles"></div>
-        <p class="hint" id="profileHint"></p>
         <div id="routeOut" aria-live="polite"></div>
       </section>
 
@@ -101,8 +98,8 @@
         </details>
       </section>
 
-      <!-- ME -->
-      <section id="view-me" role="tabpanel" aria-labelledby="tab-me" hidden>
+      <!-- MY ACCOUNT (opened from the header button) -->
+      <section id="view-account" aria-label="My account" hidden>
         <div id="meOut"></div>
       </section>
 
@@ -116,11 +113,6 @@
         <div class="field"><label for="permit">Parking permit</label>
           <select id="permit"><option value="">All permits</option></select></div>
         <p class="hint" id="shuttleNote"></p>
-        <h2 class="h">Preferences</h2>
-        <div class="field"><label for="pace">Walking pace</label>
-          <select id="pace"><option value="1.1">Relaxed</option><option value="1.34" selected>Typical</option><option value="1.6">Brisk</option></select></div>
-        <div class="field"><label for="units">Units</label>
-          <select id="units"><option value="imperial">Feet / miles</option><option value="metric">Meters / km</option></select></div>
         <p class="hint" id="dataNote"></p>
       </section>
     </div>
@@ -132,6 +124,19 @@
   </div>
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <div id="banner" role="alert" hidden></div>
+
+  <!-- WELCOME: first thing students see; sign in, create an account, or continue as a guest -->
+  <div id="welcome" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" hidden>
+    <div class="welcome-card">
+      <div class="welcome-brand"><div class="logo" aria-hidden="true">TU</div>
+        <div><h2 id="welcomeTitle">TigerPath</h2><p>Your way around Towson</p></div></div>
+      <div id="welcomeAuth"></div>
+      <div class="or"><span>or</span></div>
+      <button class="btn wide" id="guestBtn">Continue as guest</button>
+      <p class="hint center">Guests can use the map, directions and class schedule on this device.
+        Sign in to track steps, set goals and keep your settings.</p>
+    </div>
+  </div>
 
   <script type="module" src="/src/main.js"></script>
 </body>

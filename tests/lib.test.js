@@ -178,3 +178,36 @@ test('OSM accessibility: ramps, kerbs, elevators, entrances, accessible parking'
   assert.deepEqual(route(g, '1', '9', 'standard').path, ['1', '2', '9']);
   assert.deepEqual(route(g, '1', '9', 'accessible').path, ['1', '3', '9']); // ramp + curb cut, not the raised kerb
 });
+
+test('route options: fastest, a different way, step-free; duplicates merged', async () => {
+  const { routeOptions } = await import('../src/lib/alternatives.js');
+  // grid: short way A-B-D has stairs; C route around is longer but step-free; E is a parallel lit street
+  const g = new Graph();
+  const P = { A: [39.390, -76.610], B: [39.391, -76.610], D: [39.392, -76.610], C: [39.391, -76.6088], E: [39.391, -76.6106] };
+  for (const [id, [lat, lng]] of Object.entries(P)) g.addNode(id, lat, lng);
+  g.addEdge('A', 'B'); g.addEdge('B', 'D', { stairs: true });
+  g.addEdge('A', 'C', { name: 'Ramp Walk' }); g.addEdge('C', 'D', { name: 'Ramp Walk' });
+  g.addEdge('A', 'E', { lit: true, name: 'Lit Lane' }); g.addEdge('E', 'D', { lit: true, name: 'Lit Lane' });
+  const compute = (profile, extra = {}) => { const res = route(g, 'A', 'D', profile, extra); return res && { res, minutes: res.dist / 1.34 / 60 }; };
+  const opts = routeOptions(compute);
+  const kinds = opts.map((o) => [o.kind, ...o.also].join('+'));
+  assert.equal(opts[0].kind, 'fastest');
+  assert.ok(opts[0].badges.includes('Quickest'));
+  assert.equal(opts[0].stairs, 1);
+  assert.ok(opts.some((o) => o.badges.includes('No stairs')), kinds.join(','));
+  assert.ok(opts.find((o) => o.kind === 'lit' || o.also.includes('lit')).via === 'Lit Lane', JSON.stringify(opts.map((o) => [o.kind, o.via])));
+  // stairs avoided entirely when the student asks for it
+  assert.equal(route(g, 'A', 'D', 'standard', { noStairs: true }).edges.some((e) => e.stairs), false);
+});
+
+test('sunrise/sunset for Towson', async () => {
+  const { sunTimes, isDarkOutside } = await import('../src/lib/sun.js');
+  const nov = sunTimes(new Date(2026, 10, 11, 12), 39.3925, -76.611);
+  // published: sunrise ≈ 11:46 UTC (6:46am EST), sunset ≈ 21:53 UTC (4:53pm EST)
+  assert.ok(Math.abs(nov.sunset - Date.UTC(2026, 10, 11, 21, 53)) < 6 * 60000, nov.sunset.toISOString());
+  assert.ok(Math.abs(nov.sunrise - Date.UTC(2026, 10, 11, 11, 46)) < 6 * 60000, nov.sunrise.toISOString());
+  const jun = sunTimes(new Date(2026, 5, 21, 12), 39.3925, -76.611);
+  assert.ok(Math.abs(jun.sunset - Date.UTC(2026, 5, 22, 0, 37)) < 6 * 60000, jun.sunset.toISOString()); // 8:37pm EDT
+  assert.equal(isDarkOutside(new Date(Date.UTC(2026, 10, 11, 23, 0))), true);
+  assert.equal(isDarkOutside(new Date(Date.UTC(2026, 10, 11, 17, 0))), false);
+});

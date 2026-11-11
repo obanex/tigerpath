@@ -118,6 +118,12 @@ export class SupabaseBackend {
     const { error } = await this.c.from('weekly_steps').upsert({ user_id: user.id, week, hall, steps: Math.max(0, Math.min(250000, Math.round(steps))), updated_at: new Date().toISOString() });
     if (error) throw new Error(error.message);
   }
+  /** The student's own Hall Cup entry for a week (row-level security only allows their own row). */
+  async myWeek(user, week) {
+    const { data, error } = await this.c.from('weekly_steps').select('hall, steps').eq('user_id', user.id).eq('week', week).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  }
   async withdrawWeek(user, week) { await this.c.from('weekly_steps').delete().eq('user_id', user.id).eq('week', week); }
   async leaderboard(week) {
     const { data, error } = await this.c.rpc('hall_leaderboard', { p_week: week });

@@ -7,11 +7,12 @@ A campus map and wayfinding app for Towson University.
 | Feature | What it does |
 |---|---|
 | Welcome screen | Sign in or create an account when the app opens, or continue as a guest |
-| My account | Activity, goals and **preferences**: preferred route, always avoid stairs, best-lit after dark, walking pace (incl. wheelchair), units, home building, theme |
+| Activity tab | Today's steps and miles, walk tracking, 7-day chart, Hall Cup, weekly challenges, badges and goals |
+| My account | Profile and **preferences**: preferred route, always avoid stairs, best-lit after dark, walking pace (incl. wheelchair), units, home building, theme |
 | Route choices | Every trip shows the options side by side (fastest, another way, step-free, best lit) with time, distance and stairs; the quickest is marked, tap any to follow it |
 | Campus Pulse | The Explore tab opens with your next class and a leave-by time, live weather with walking advice (icy → step-free routes), food open now, today's steps and this week's challenges |
-| Challenges & badges | Three new challenges every Monday plus 16 badges for steps, streaks and exploring campus; buildings count as visited when you're there with location on |
-| Hall Cup | Weekly step leaderboard between residence halls (plus Commuters), ranked by average steps per walker; shown in Campus Pulse and My account |
+| Challenges & badges | Three new challenges every Monday plus 18 badges for steps, streaks and exploring campus; buildings count as visited when you're there with location on |
+| Hall Cup | Weekly step leaderboard between residence halls (plus Commuters), ranked by average steps per walker; last week's winner is announced each Monday and everyone who walked for the winning hall earns the **Hall champion** badge (3 wins: **Dynasty**) |
 | Walk With Me | Share a walk with a friend; if you're 5+ minutes late it asks "Are you OK?", and no answer brings up TU Police, 911 and text-a-friend buttons. Your friend follows along from a link |
 | Walking directions | Turn-by-turn steps with walking time and arrival time |
 | Accessible routing | Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; slower pace for time estimates |

@@ -21,3 +21,20 @@ export function rankRows(rows, { names = {}, mine = null } = {}) {
     };
   }).sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || b.walkers - a.walkers);
 }
+
+/** The ISO week before the one containing `date`. */
+export function previousWeek(date, weekKey) {
+  const d = new Date(date); d.setDate(d.getDate() - 7);
+  return weekKey(d);
+}
+
+/** Last week's winner from ranked rows: the #1 ranked hall, or null if no hall qualified. */
+export const winnerOf = (ranked) => ranked.find((r) => r.rank === 1) ?? null;
+
+/**
+ * Should this student get a Hall Cup win for `week`?
+ * myRow: their own weekly_steps row for that week ({ hall, steps }) or null.
+ */
+export function isChampion(myRow, winner) {
+  return !!(myRow && winner && myRow.steps > 0 && myRow.hall === winner.hall);
+}

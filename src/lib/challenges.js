@@ -99,6 +99,7 @@ export function lifetimeStats(data, buildings = []) {
     dining: byCat('dining'), residence: byCat('residence'), academic: byCat('academic'),
     challengeWeeks: Object.values(data.challengeLog ?? {}).filter((ids) => ids.length >= 3).length,
     safeWalks: data.safeWalks ?? 0,
+    hallWins: (data.hallWins ?? []).length,
   };
 }
 
@@ -119,6 +120,8 @@ export const BADGES = [
   { id: 'scholar', icon: '🎓', title: 'Scholar', desc: 'Visit 10 academic buildings', test: (s) => s.visitedCount(s.academic) >= 10 },
   { id: 'champion', icon: '🏅', title: 'Weekly champion', desc: 'Finish all 3 weekly challenges', test: (s) => s.challengeWeeks >= 1 },
   { id: 'buddy', icon: '🛡️', title: 'Buddy system', desc: 'Finish a Walk With Me walk', test: (s) => s.safeWalks >= 1 },
+  { id: 'hall-champion', icon: '🏆', title: 'Hall champion', desc: "Be in the week's winning Hall Cup team", test: (s) => s.hallWins >= 1 },
+  { id: 'hall-dynasty', icon: '👑', title: 'Dynasty', desc: 'Win the Hall Cup 3 times', test: (s) => s.hallWins >= 3 },
 ];
 
 /** Badge ids earned now but not recorded in data.badges yet. */

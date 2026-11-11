@@ -90,6 +90,7 @@ export function renderPulse(el, ctx) {
     parts.push(`<div class="pulse-card"><span class="pc-label">🏆 Hall Cup · this week</span>
       ${top.length ? `<ul class="pulse-list">${top.map((r, i) => `<li><span>${medal[i]} ${esc(r.name)}${r.mine ? ' <span class="rbadge q">You</span>' : ''}</span><span class="small muted">${r.avg.toLocaleString()} avg</span></li>`).join('')}</ul>`
         : '<span class="small">No hall has 3 walkers yet this week — rally your floor!</span>'}
+      ${ctx.lastWinner ? `<span class="small">Last week: <b>${esc(ctx.lastWinner.name)}</b> won 🏆</span>` : ''}
       ${mine && !top.includes(mine) ? `<span class="small">${esc(mine.name)}: ${mine.rank ? `#${mine.rank}` : `needs ${mine.needs} more walker${mine.needs > 1 ? 's' : ''}`}</span>` : ''}
       ${!acc.data.settings.hall || acc.data.settings.hallCup === false ? `<button class="link-btn" data-act="${acc.user ? 'account' : 'signin'}">${acc.user ? 'Pick your hall to compete →' : 'Sign in to compete for your hall →'}</button>` : ''}</div>`);
   }

@@ -117,3 +117,22 @@ test('cloud backend: Hall Cup submit and leaderboard (mock client)', async () =>
   assert.equal((await be.leaderboard('2026-W46'))[0].hall, 'GT');
   assert.deepEqual(calls[1], ['hall_leaderboard', { p_week: '2026-W46' }]);
 });
+
+test('Hall Champion: previous week, winner, eligibility, badges', async () => {
+  const { previousWeek, winnerOf, isChampion, rankRows } = await import('../src/lib/leaderboard.js');
+  assert.equal(previousWeek(new Date(2026, 10, 16), weekKey), '2026-W46'); // Monday of W47 → W46
+  assert.equal(previousWeek(new Date(2027, 0, 4), weekKey), '2026-W53');
+  const ranked = rankRows([{ hall: 'RT', walkers: 2, total_steps: null, avg_steps: null }, { hall: 'GT', walkers: 4, total_steps: '160000', avg_steps: 40000 }].sort((a, b) => (b.avg_steps ?? -1) - (a.avg_steps ?? -1)));
+  const w = winnerOf(ranked);
+  assert.equal(w.hall, 'GT');
+  assert.equal(winnerOf(rankRows([{ hall: 'RT', walkers: 2, total_steps: null, avg_steps: null }])), null); // nobody qualified
+  assert.equal(isChampion({ hall: 'GT', steps: 5000 }, w), true);
+  assert.equal(isChampion({ hall: 'GT', steps: 0 }, w), false);   // joined but didn't walk
+  assert.equal(isChampion({ hall: 'RT', steps: 9000 }, w), false);
+  assert.equal(isChampion(null, w), false);
+  const data = { goals: { steps: 7500, miles: 3 }, activity: {}, visits: {}, badges: {}, hallWins: ['2026-W46'] };
+  assert.ok(newBadges(data, BUILDINGS).includes('hall-champion'));
+  assert.ok(!newBadges(data, BUILDINGS).includes('hall-dynasty'));
+  data.hallWins.push('2026-W47', '2026-W49');
+  assert.ok(newBadges(data, BUILDINGS).includes('hall-dynasty'));
+});

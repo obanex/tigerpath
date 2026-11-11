@@ -25,6 +25,7 @@
       <button role="tab" id="tab-explore" aria-controls="view-explore" aria-selected="true">Explore</button>
       <button role="tab" id="tab-directions" aria-controls="view-directions" aria-selected="false">Directions</button>
       <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">Classes</button>
+      <button role="tab" id="tab-activity" aria-controls="view-activity" aria-selected="false">Activity</button>
       <button role="tab" id="tab-layers" aria-controls="view-layers" aria-selected="false">Layers</button>
     </nav>
 
@@ -97,6 +98,11 @@
           <button class="btn" id="icsBtn">Download .ics</button>
           <p class="hint">Works with Google Calendar, Apple Calendar and Outlook. Each event includes the building, room and a reminder at your chosen time.</p>
         </details>
+      </section>
+
+      <!-- ACTIVITY: steps, tracking, Hall Cup, challenges, badges, goals -->
+      <section id="view-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
+        <div id="actOut"></div>
       </section>
 
       <!-- MY ACCOUNT (opened from the header button) -->

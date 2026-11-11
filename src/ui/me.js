@@ -53,7 +53,7 @@ const seg = (name, options, value) => `<div class="seg" role="radiogroup" data-p
  * el: account view container · welcomeEl: welcome overlay · buildings: for the "home" picker
  * onPrefs(key): called after a preference changes so the app can apply it
  */
-export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {}, hallCup = null }) {
+export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {}, onNavigate = () => {}, hallCup = null }) {
   let mode = 'signup';
 
   /** Sign-up / sign-in form, used on the welcome screen. */
@@ -117,7 +117,7 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
     </details>`;
   }
 
-  function hallCupSection() {
+  function hallCupSection({ readOnly = false } = {}) {
     if (!hallCup) return '';
     const st = acc.data.settings, board = hallCup.board();
     const mine = st.hallCup === false ? null : st.hall;
@@ -125,13 +125,15 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
       <option value="">Not competing</option>${hallCup.teams.map((t) => `<option value="${esc(t.id)}" ${st.hall === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>`;
     if (!hallCup.cloud) return `<h3 class="h">🏆 Hall Cup</h3><p class="hint">The Hall Cup needs cloud accounts.</p>`;
     const rows = board?.rows ?? [];
+    const last = hallCup.lastWinner?.();
     return `<h3 class="h">🏆 Hall Cup · this week</h3>
-      ${select}
+      ${last ? `<p class="last-winner">Last week's champion: <b>${esc(last.name)}</b> · ${last.avg.toLocaleString()} avg steps 🏆</p>` : ''}
+      ${readOnly ? '' : select}
       ${rows.length ? `<table class="board"><thead><tr><th>#</th><th>Team</th><th>Avg steps</th><th>Walkers</th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="${r.mine ? 'mine' : ''}"><td>${r.rank ?? '–'}</td><td>${esc(r.name)}${r.mine ? ' <span class="rbadge q">You</span>' : ''}</td>
           <td>${r.avg != null ? r.avg.toLocaleString() : `<span class="muted small">needs ${r.needs} more</span>`}</td><td>${r.walkers}</td></tr>`).join('')}</tbody></table>`
         : `<p class="hint">${board?.error ? 'Couldn’t load the Hall Cup right now.' : 'No steps logged this week yet — be the first for your hall!'}</p>`}
-      <p class="hint">Halls are ranked by average steps per walker and need 3+ walkers to be ranked. Only your hall and weekly step count are shared, as part of a hall total — never your name or where you walked.${mine ? '' : ' Pick a team to join.'}</p>`;
+      <p class="hint">Halls are ranked by average steps per walker and need 3+ walkers to be ranked. Only your hall and weekly step count are shared, as part of a hall total — never your name or where you walked.${readOnly ? ' Sign in to compete.' : mine ? '' : ' Pick a team to join.'}</p>`;
   }
 
   function achievements() {
@@ -148,29 +150,68 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
         return `<li class="${on ? 'on' : ''}" title="${esc(b.desc)}"><span class="bicon" aria-hidden="true">${on ? b.icon : '🔒'}</span><b>${esc(b.title)}</b><span>${esc(b.desc)}</span></li>`; }).join('')}</ul>`;
   }
 
-  function bindPrefs() {
+  function bindPrefs(root) {
     const set = (key, value) => { acc.update((d) => { d.settings[key] = value; }); onPrefs(key); };
-    el.querySelectorAll('.seg[data-pref]').forEach((g) => { g.onclick = (e) => {
+    root.querySelectorAll('.seg[data-pref]').forEach((g) => { g.onclick = (e) => {
       const v = e.target.closest('button')?.dataset.v; if (!v) return;
       g.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === v)));
       set(g.dataset.pref, v);
     }; });
-    el.querySelectorAll('input[type=checkbox][data-pref]').forEach((c) => { c.onchange = () => set(c.dataset.pref, c.checked); });
-    el.querySelectorAll('select[data-pref]').forEach((s) => { s.onchange = () => set(s.dataset.pref, s.dataset.pref === 'pace' ? +s.value : s.value || null); });
+    root.querySelectorAll('input[type=checkbox][data-pref]').forEach((c) => { c.onchange = () => set(c.dataset.pref, c.checked); });
+    root.querySelectorAll('select[data-pref]').forEach((s) => { s.onchange = () => set(s.dataset.pref, s.dataset.pref === 'pace' ? +s.value : s.value || null); });
   }
 
-  function guestView() {
+  // ---------------------------------------------------------------- My account
+  function accountView() {
+    if (!acc.user) {
+      el.innerHTML = `
+        <div class="me-head"><div class="avatar big" aria-hidden="true">👤</div><div class="grow"><h2 class="me-title">Guest</h2>
+          <span class="muted small">Your settings are saved on this device.</span></div></div>
+        <button class="btn primary wide" id="openWelcome">Sign in or create an account</button>
+        <ul class="perks"><li>🎯 Daily step and mile goals</li><li>🏆 Compete for your hall in the Hall Cup</li><li>☁️ Your classes and settings on all your devices</li></ul>
+        ${preferences()}`;
+      el.querySelector('#openWelcome').onclick = showWelcome;
+      bindPrefs(el);
+      return;
+    }
+    const initials = acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
     el.innerHTML = `
-      <div class="me-head"><div class="avatar big" aria-hidden="true">👤</div><div class="grow"><h2 class="me-title">Guest</h2>
-        <span class="muted small">Your settings are saved on this device.</span></div></div>
-      <button class="btn primary wide" id="openWelcome">Sign in or create an account</button>
-      <ul class="perks"><li>🎯 Daily step and mile goals</li><li>👟 Track your walks around campus</li><li>☁️ Your classes and settings, kept with your account</li></ul>
-      ${preferences()}`;
-    el.querySelector('#openWelcome').onclick = showWelcome;
-    bindPrefs();
+      <div class="me-head"><div class="avatar big" aria-hidden="true">${esc(initials)}</div>
+        <div class="grow"><h2 class="me-title">${esc(acc.user.name)}</h2><span class="muted small">${esc(acc.user.email)}</span></div>
+        <button class="btn small" id="signOut">Sign out</button></div>
+      <button class="link-btn" id="toActivity">👟 Your steps, challenges, Hall Cup and badges are in the Activity tab →</button>
+      ${preferences()}
+      <details class="card"><summary>⚙️ Account & data</summary>
+        <p class="hint">${acc.backend.kind === 'cloud' ? 'Synced to your TigerPath cloud account.' : 'Saved on this device.'}</p>
+        <div class="btn-row"><button class="btn" id="exportData">Download my data</button><button class="btn danger" id="deleteAcct">Delete account</button></div>
+      </details>`;
+    bindPrefs(el);
+    el.querySelector('#toActivity').onclick = () => onNavigate('activity');
+    el.querySelector('#signOut').onclick = async () => { if (tracker.running) tracker.stop(); await acc.signOut(); toast('Signed out'); };
+    el.querySelector('#exportData').onclick = () => {
+      const blob = new Blob([JSON.stringify({ account: acc.user, ...acc.data }, null, 2)], { type: 'application/json' });
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'tigerpath-data.json' });
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    el.querySelector('#deleteAcct').onclick = async () => {
+      if (!confirm('Delete your TigerPath account and all its data? This cannot be undone.')) return;
+      if (tracker.running) tracker.stop();
+      await acc.deleteAccount(); toast('Account deleted');
+    };
   }
 
-  function signedIn() {
+  // ---------------------------------------------------------------- Activity tab
+  function activityGuest() {
+    actEl.innerHTML = `
+      <h2 class="me-title">Activity</h2>
+      <p class="small">Track your walks around campus, hit daily goals, take on weekly challenges, collect badges and help your hall win the Hall Cup.</p>
+      <button class="btn primary wide" id="actSignIn">Sign in to start</button>
+      ${hallCupSection({ readOnly: true })}
+      ${achievements()}`;
+    actEl.querySelector('#actSignIn').onclick = showWelcome;
+  }
+
+  function activitySignedIn() {
     const { goals, settings, activity } = acc.data;
     const live = tracker.status();
     const todayTotals = activity[dayKey()];
@@ -180,12 +221,8 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
     const minutes = Math.round((todayTotals?.seconds ?? 0) / 60);
     const ft = settings.heightCm ? Math.floor(settings.heightCm / 30.48) : '';
     const inch = settings.heightCm ? Math.round((settings.heightCm / 2.54) % 12) : '';
-    const initials = acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-    el.innerHTML = `
-      <div class="me-head"><div class="avatar big" aria-hidden="true">${esc(initials)}</div>
-        <div class="grow"><h2 class="me-title">${esc(acc.user.name)}</h2><span class="muted small">${esc(acc.user.email)}</span></div>
-        <button class="btn small" id="signOut">Sign out</button></div>
-      <h3 class="h">Today</h3>
+    actEl.innerHTML = `
+      <h3 class="h first">Today</h3>
       <div class="rings">
         ${ring(p.stepsPct, fmtInt(p.steps), `of ${fmtInt(goals.steps)} steps`, `${fmtInt(p.steps)} of ${fmtInt(goals.steps)} steps`)}
         ${ring(p.milesPct, p.miles.toFixed(2), `of ${goals.miles} miles`, `${p.miles.toFixed(2)} of ${goals.miles} miles`)}
@@ -208,8 +245,6 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
 
       ${achievements()}
 
-      ${preferences()}
-
       <details class="card" id="goalCard"><summary>🎯 Goals</summary>
         <form id="goalForm">
           <div class="row">
@@ -220,16 +255,10 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
             <div class="row"><div class="field"><label for="hFt" class="sr-only">Feet</label><input id="hFt" type="number" min="3" max="8" placeholder="ft" value="${ft}" /></div>
             <div class="field"><label for="hIn" class="sr-only">Inches</label><input id="hIn" type="number" min="0" max="11" placeholder="in" value="${inch}" /></div></div></fieldset>
           <button class="btn primary" type="submit">Save goals</button>
-        </form></details>
+        </form></details>`;
 
-      <details class="card"><summary>⚙️ Account & data</summary>
-        <p class="hint">${acc.backend.kind === 'cloud' ? 'Synced to your TigerPath cloud account.' : 'Saved on this device.'}</p>
-        <div class="btn-row"><button class="btn" id="exportData">Download my data</button><button class="btn danger" id="deleteAcct">Delete account</button></div>
-      </details>`;
-
-    bindPrefs();
-    el.querySelector('#signOut').onclick = async () => { if (tracker.running) tracker.stop(); await acc.signOut(); toast('Signed out'); };
-    el.querySelector('#trackBtn').onclick = async () => {
+    bindPrefs(actEl); // Hall Cup team picker
+    actEl.querySelector('#trackBtn').onclick = async () => {
       if (tracker.running) {
         const s = tracker.stop();
         toast(s && s.meters > 10 ? `Walk saved: ${fmtMiles(s.meters)} mi, ${fmtInt(s.steps)} steps` : 'Tracking stopped');
@@ -238,47 +267,43 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
       }
       render();
     };
-    el.querySelector('#goalForm').onsubmit = (e) => {
+    actEl.querySelector('#goalForm').onsubmit = (e) => {
       e.preventDefault();
-      const steps = Math.max(500, Math.round(+el.querySelector('#gSteps').value || goals.steps));
-      const miles = Math.max(0.5, +el.querySelector('#gMiles').value || goals.miles);
-      const f = +el.querySelector('#hFt').value, i = +el.querySelector('#hIn').value || 0;
+      const steps = Math.max(500, Math.round(+actEl.querySelector('#gSteps').value || goals.steps));
+      const miles = Math.max(0.5, +actEl.querySelector('#gMiles').value || goals.miles);
+      const f = +actEl.querySelector('#hFt').value, i = +actEl.querySelector('#hIn').value || 0;
       acc.update((d) => { d.goals = { steps, miles }; d.settings.heightCm = f ? Math.round((f * 12 + i) * 2.54) : null; });
       toast('Goals saved');
     };
-    el.querySelector('#exportData').onclick = () => {
-      const blob = new Blob([JSON.stringify({ account: acc.user, ...acc.data }, null, 2)], { type: 'application/json' });
-      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'tigerpath-data.json' });
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    };
-    el.querySelector('#deleteAcct').onclick = async () => {
-      if (!confirm('Delete your TigerPath account and all its data? This cannot be undone.')) return;
-      if (tracker.running) tracker.stop();
-      await acc.deleteAccount(); toast('Account deleted');
-    };
     // chart tooltip (hover + keyboard focus)
-    const tip = el.querySelector('.chart-tip'), wrap = el.querySelector('.chart-wrap');
+    const tip = actEl.querySelector('.chart-tip'), wrap = actEl.querySelector('.chart-wrap');
     const showTip = (g) => {
       tip.textContent = g.dataset.tip; tip.hidden = false;
       const r = g.getBoundingClientRect(), w = wrap.getBoundingClientRect();
       tip.style.left = `${Math.min(Math.max(0, r.left - w.left + r.width / 2 - tip.offsetWidth / 2), w.width - tip.offsetWidth)}px`;
     };
-    el.querySelectorAll('.bar').forEach((g) => {
+    actEl.querySelectorAll('.bar').forEach((g) => {
       g.addEventListener('mouseenter', () => showTip(g)); g.addEventListener('focus', () => showTip(g));
       g.addEventListener('mouseleave', () => (tip.hidden = true)); g.addEventListener('blur', () => (tip.hidden = true));
     });
   }
 
+  const typing = (root) => root.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=text], input:not([type])');
   function render() {
     // don't wipe a form the student is typing in
-    if (el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=text], input:not([type])')) {
-      const s = el.querySelector('#trackStatus'), live = tracker.status();
+    if (typing(actEl)) {
+      const s = actEl.querySelector('#trackStatus'), live = tracker.status();
       if (s && live) s.textContent = `Tracking · ${fmtMiles(live.meters)} mi · ${fmtInt(live.steps)} steps`;
-      return;
+    } else {
+      const goalsOpen = actEl.querySelector('#goalCard')?.open;
+      if (acc.user) activitySignedIn(); else activityGuest();
+      if (goalsOpen && actEl.querySelector('#goalCard')) actEl.querySelector('#goalCard').open = true;
     }
-    const prefsOpen = el.querySelector('#prefCard')?.open;
-    if (acc.user) signedIn(); else guestView();
-    if (prefsOpen != null && el.querySelector('#prefCard')) el.querySelector('#prefCard').open = prefsOpen;
+    if (!typing(el)) {
+      const prefsOpen = el.querySelector('#prefCard')?.open;
+      accountView();
+      if (prefsOpen != null && el.querySelector('#prefCard')) el.querySelector('#prefCard').open = prefsOpen;
+    }
   }
   return { render, showWelcome, hideWelcome };
 }

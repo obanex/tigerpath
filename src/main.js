@@ -28,6 +28,21 @@ import { teamOptions, rankRows, previousWeek, winnerOf, isChampion } from './lib
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 
 const CENTER = [39.3925, -76.6110];
+
+// Guard Leaflet's fly-to animation. Its math produces NaN positions mid-flight
+// ("Invalid LatLng (NaN, NaN)") with a zero-size map, a non-finite target, or a
+// tiny move (e.g. re-flying to almost where the map already is). Tiny moves use
+// a normal pan/zoom instead, which is what they should look like anyway.
+const leafletFlyTo = L.Map.prototype.flyTo;
+L.Map.prototype.flyTo = function (center, zoom, options) {
+  const c = L.latLng(center), size = this.getSize();
+  const z = zoom === undefined ? this.getZoom() : zoom;
+  if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return this;
+  if (!size.x || !size.y || !Number.isFinite(z)) return this.setView(c, Number.isFinite(z) ? z : this.getZoom(), { animate: false });
+  const px = this.project(this.getCenter(), z).distanceTo(this.project(c, z));
+  if (px < 200 && Math.abs(z - this.getZoom()) < 1) return this.setView(c, z, { animate: true });
+  return leafletFlyTo.call(this, c, z, options);
+};
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const store = {
@@ -119,15 +134,24 @@ const layers = {
 };
 const markers = new Map();
 
+/** Space the panel covers, so fitted routes stay visible. Never more than leaves 120 px of map. */
 function padding() {
-  return isMobile()
-    ? { paddingTopLeft: [20, 70], paddingBottomRight: [20, $('#panel').offsetHeight + 20] }
-    : { paddingTopLeft: [430, 30], paddingBottomRight: [70, 30] };
+  const size = map.getSize();
+  const tl = isMobile() ? [20, 70] : [430, 30];
+  const br = isMobile() ? [20, $('#panel').offsetHeight + 20] : [70, 30];
+  for (const [axis, avail] of [[0, size.x - 120], [1, size.y - 120]]) {
+    const total = tl[axis] + br[axis];
+    if (total > avail) { const k = Math.max(0, avail) / total; tl[axis] *= k; br[axis] *= k; }
+  }
+  return { paddingTopLeft: tl, paddingBottomRight: br };
 }
-function flyTo(latlng, zoom = 18) {
-  const b = L.latLng(latlng).toBounds(60);
-  map.flyToBounds(b, { ...padding(), maxZoom: zoom, duration: 0.6 });
+/** Animate the map to show `bounds` — safely (a hidden or zero-size map would produce NaN positions). */
+function fitView(bounds, maxZoom = 18) {
+  const size = map.getSize();
+  if (!size.x || !size.y || !bounds?.isValid?.()) return;
+  map.flyToBounds(bounds, { ...padding(), maxZoom, duration: 0.6 });
 }
+function flyTo(latlng, zoom = 18) { fitView(L.latLng(latlng).toBounds(60), zoom); }
 
 function buildingIcon(b) {
   const c = CATEGORIES[b.category]?.color ?? '#333';
@@ -158,7 +182,7 @@ function updateLabels() {
 map.on('zoomend', updateLabels);
 document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}.far-out .bmark,.far-out .pmark{display:none}.campus-pin{display:none}.far-out .campus-pin{display:flex}</style>');
 L.marker(CENTER, { icon: L.divIcon({ className: '', html: '<div class="campus-pin"><span>TU</span>Towson University</div>', iconSize: [190, 36], iconAnchor: [95, 18] }), title: 'Zoom in to Towson University', keyboard: true, zIndexOffset: 2000 })
-  .on('click', () => map.flyTo(CENTER, 16)).addTo(map);
+  .on('click', () => { if (map.getSize().x) map.flyTo(CENTER, 16); }).addTo(map);
 
 function drawParking() {
   layers.parking.clearLayers();
@@ -423,7 +447,7 @@ function renderChips() {
     renderChips(); refreshMarkers();
     if (S.category) {
       const bs = S.buildings.filter((b) => b.category === S.category);
-      map.flyToBounds(L.latLngBounds(bs.map((b) => [b.lat, b.lng])), { ...padding(), maxZoom: 18, duration: 0.6 });
+      fitView(L.latLngBounds(bs.map((b) => [b.lat, b.lng])));
       renderCategoryList(bs);
     } else renderHome();
   };
@@ -615,14 +639,20 @@ function updateRoute({ fit = true, keepChoice = false } = {}) {
   if (S.from.type === 'me' && !S.me) { out.innerHTML = '<p class="hint">Waiting for your location…</p>'; return; }
   const fastest = computeRoute(S.from, S.to, 'standard');
   if (fastest?.far) { S.options = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">Walking directions cover the Towson campus and the streets right around it. That spot is too far from campus paths. Try a closer starting point.</p>'; return; }
-  S.options = routeOptions((profile, extra) => (profile === 'standard' && !extra ? fastest : computeRoute(S.from, S.to, profile, extra)));
+  const accessibleDoor = S.to.type === 'building' && accessEntrances(S.to.id).length > 0;
+  S.options = routeOptions((profile, extra) => (profile === 'standard' && !extra ? fastest : computeRoute(S.from, S.to, profile, extra)),
+    { alwaysStepFree: accessibleDoor || preferredKind() === 'stepfree' || S.requestedKind === 'stepfree' });
   if (!S.options.length) { S.lastRoute = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">No route found. If “Always avoid stairs” is on, there may be no step-free way — try turning it off in My account.</p>'; return; }
   const want = keepChoice && optionFor(S.routeKind) ? S.routeKind : (S.requestedKind ?? preferredKind());
   S.requestedKind = null;
   const sel = optionFor(want) ?? S.options[0];
   S.routeKind = sel.kind; S.lastRoute = sel.r;
   drawRoutes();
-  if (fit) map.flyToBounds(L.latLngBounds(S.options.flatMap((o) => o.r.latlngs)), { ...padding(), maxZoom: 18, duration: 0.6 });
+  if (fit) {
+    const bounds = L.latLngBounds(S.options.flatMap((o) => o.r.latlngs));
+    if (isMobile() && $('#panel').dataset.sheet === 'full') { sheet('half'); setTimeout(() => fitView(bounds), 300); } // after the panel slides down
+    else fitView(bounds);
+  }
   renderRouteOut();
 }
 
@@ -691,15 +721,15 @@ function startWatch() {
     if (first) {
       const far = distance(S.me, { lat: CENTER[0], lng: CENTER[1] }) > 3000;
       if (far) toast('You appear to be off campus — routes start from the nearest campus path.', 4000);
-      else map.flyTo([S.me.lat, S.me.lng], 18);
+      else flyTo([S.me.lat, S.me.lng], 18);
       if (S.from?.type === 'me' || S.to?.type === 'me') updateRoute();
     }
     onLiveUpdate();
   }, (err) => { toast(err.code === 1 ? 'Location permission denied' : 'Could not get your location'); S.watchId = null; }, { enableHighAccuracy: true, maximumAge: 5000 });
 }
-function locate() { if (S.me) map.flyTo([S.me.lat, S.me.lng], 18); startWatch(); }
+function locate() { if (S.me) flyTo([S.me.lat, S.me.lng], 18); startWatch(); }
 $('#locateBtn').onclick = locate;
-$('#resetBtn').onclick = () => map.flyTo(CENTER, 16);
+$('#resetBtn').onclick = () => { if (map.getSize().x) map.flyTo(CENTER, 16); };
 
 // right-click / long-press on map
 map.on('contextmenu', (e) => {
@@ -740,6 +770,7 @@ function renderSchedule() {
   });
   drawDay(plan);
 }
+let lastDayFit = '';
 function drawDay(plan) {
   layers.route.clearLayers();
   const all = [];
@@ -758,7 +789,9 @@ function drawDay(plan) {
       .bindTooltip(`${i + 1}. ${c.title} · ${formatTime(c.start)}`).addTo(layers.route);
     all.push([b.lat, b.lng]);
   });
-  if (all.length) map.flyToBounds(L.latLngBounds(all), { ...padding(), maxZoom: 18, duration: 0.6 });
+  const key = `${S.day}|${plan.classes.map((c) => `${c.id}@${c.building}`).join(',')}`;
+  if (all.length && key !== lastDayFit) fitView(L.latLngBounds(all)); // don't re-fly on every re-render
+  lastDayFit = key;
 }
 function initScheduleForm() {
   $('#cBldg').innerHTML = [...S.buildings].sort((a, b) => a.name.localeCompare(b.name))
@@ -1072,6 +1105,7 @@ async function initAccounts() {
   await acc.init();
   tracker = createTracker({
     acc,
+    onFix: (fix) => detectVisit(fix), // buildings you walk into while tracking count as visited
     onUpdate: (_, err) => { if (err) toast(err); if (S.tab === 'account' || S.tab === 'activity') meView.render(); },
     onGoal: () => {
       toast('🎉 You hit your daily goal!', 4000);

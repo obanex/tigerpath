@@ -166,7 +166,7 @@ export function createWatchView(ctx) {
   if (ctx.routeLatLngs?.length) {
     L.polyline(ctx.routeLatLngs, { color: '#fff', weight: 10 }).addTo(layer);
     L.polyline(ctx.routeLatLngs, { color: '#16a34a', weight: 6, dashArray: '8 8' }).addTo(layer);
-    ctx.map.fitBounds(L.latLngBounds(ctx.routeLatLngs), { padding: [40, 40] });
+    if (ctx.map.getSize().x) ctx.map.fitBounds(L.latLngBounds(ctx.routeLatLngs), { padding: [40, 40] });
   }
   const transport = createTransport(ctx.watch.id, ctx.supabaseClient);
   transport.onMessage((m) => { state = watchReducer(state, m); render(); });

@@ -45,6 +45,26 @@ npm run build      # static site in dist/ — host anywhere (towson.edu, GitHub 
 Every push to `main` runs the tests, builds the site and publishes it to GitHub Pages
 (`.github/workflows/deploy.yml`). One-time setup: **Settings → Pages → Source: GitHub Actions**.
 
+## Testing before a release
+
+```bash
+npm test                                   # unit tests
+npm run build && npx vite preview --port 4173 &
+npm run test:e2e                           # full feature test → test-results/report.md + screenshots
+```
+
+`test:e2e` drives the real app in a browser: map and search, directions, classes and reminders, real cloud accounts
+(sign-up, sync across two devices, deletion), activity tracking, challenges, badges, Hall Cup rankings in the real
+database, Campus Pulse, Walk With Me in real time between two browsers, the data editor, offline mode, and phone
+layouts. Run with `E2E_CLOUD=0` to skip the cloud parts. It creates accounts named `tigerpath-e2e-…@example.com`;
+remove them afterwards in the Supabase SQL editor:
+
+```sql
+delete from auth.users where email like 'tigerpath-e2e-%@example.com';
+```
+
+GitHub also runs a quick iPhone Safari + Android Chrome check on every push (`.github/workflows/browser-tests.yml`).
+
 ## Data sources & what still needs checking
 
 **From OpenStreetMap (refreshed monthly by the *Fetch OpenStreetMap data* workflow):** building footprints and

@@ -196,6 +196,14 @@ test('route options: fastest, a different way, step-free; duplicates merged', as
   assert.equal(opts[0].stairs, 1);
   assert.ok(opts.some((o) => o.badges.includes('No stairs')), kinds.join(','));
   assert.ok(opts.find((o) => o.kind === 'lit' || o.also.includes('lit')).via === 'Lit Lane', JSON.stringify(opts.map((o) => [o.kind, o.via])));
+  // no stairs on the fastest way → no step-free option, unless asked for (e.g. destination has an accessible entrance)
+  const flat = new Graph(); flat.addNode('A', 39.390, -76.610); flat.addNode('B', 39.391, -76.610); flat.addEdge('A', 'B');
+  const cf = (profile, extra = {}) => { const res = route(flat, 'A', 'B', profile, extra); return res && { res, minutes: res.dist / 1.34 / 60 }; };
+  assert.deepEqual(routeOptions(cf).map((o) => o.kind), ['fastest']);
+  assert.deepEqual(routeOptions(cf, { alwaysStepFree: true }).map((o) => [o.kind, ...o.also].join('+')), ['fastest+stepfree']); // same path → merged
+  // …but not when the step-free one ends somewhere else (an accessible entrance)
+  const door = (profile, extra = {}) => { const r = cf(profile, extra); return r && { ...r, latlngs: profile === 'accessible' ? [[39.390, -76.610], [39.3912, -76.6102]] : [[39.390, -76.610], [39.391, -76.610]] }; };
+  assert.deepEqual(routeOptions(door, { alwaysStepFree: true }).map((o) => o.kind), ['fastest', 'stepfree']);
   // stairs avoided entirely when the student asks for it
   assert.equal(route(g, 'A', 'D', 'standard', { noStairs: true }).edges.some((e) => e.stairs), false);
 });

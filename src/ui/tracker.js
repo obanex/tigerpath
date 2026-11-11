@@ -6,7 +6,7 @@
 
 import { TrackAccumulator, StepDetector, addActivity, dayKey, stepsFromMeters, strideFromHeight, goalProgress } from '../lib/activity.js';
 
-export function createTracker({ acc, onUpdate = () => {}, onGoal = () => {} }) {
+export function createTracker({ acc, onUpdate = () => {}, onGoal = () => {}, onFix = () => {} }) {
   let state = null; // { source, started, track, detector, motionSteps, watchId, wake, timer, committed }
 
   const stride = () => strideFromHeight(acc.data.settings.heightCm);
@@ -61,7 +61,10 @@ export function createTracker({ acc, onUpdate = () => {}, onGoal = () => {} }) {
       state = { source, started: Date.now(), track: new TrackAccumulator(), detector: new StepDetector(),
         committed: { meters: 0, campusMeters: 0, steps: 0, seconds: 0 } };
       state.watchId = navigator.geolocation.watchPosition(
-        (pos) => { state?.track.add({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, t: pos.timestamp }); onUpdate(totals()); },
+        (pos) => {
+          const fix = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, t: pos.timestamp };
+          state?.track.add(fix); onFix(fix); onUpdate(totals());
+        },
         () => onUpdate(totals(), 'Location unavailable — check permissions.'),
         { enableHighAccuracy: true, maximumAge: 3000 });
       addEventListener('devicemotion', onMotion);

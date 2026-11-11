@@ -31,6 +31,14 @@ export function describe(r) {
   return { stairs, litShare: r.res.dist ? litLen / r.res.dist : 0 };
 }
 
+// Two options are the same only if they also start and end at the same spot
+// (a step-free route may end at a building's accessible entrance instead).
+function sameEnds(a, b) {
+  if (!a.latlngs || !b.latlngs) return true;
+  const near = (p, q) => Math.abs(p[0] - q[0]) < 0.0001 && Math.abs(p[1] - q[1]) < 0.00013; // ≈ 10 m
+  return near(a.latlngs[0], b.latlngs[0]) && near(a.latlngs.at(-1), b.latlngs.at(-1));
+}
+
 export const KINDS = {
   fastest: { label: 'Fastest', icon: '🚶' },
   alternate: { label: 'Another way', icon: '🔀' },
@@ -42,7 +50,7 @@ export const KINDS = {
  * Returns up to four options: [{ kind, label, icon, r, minutes, stairs, litShare, via, badges }].
  * Options that are (nearly) the same path are merged, keeping both badges.
  */
-export function routeOptions(computeRoute) {
+export function routeOptions(computeRoute, { alwaysStepFree = false } = {}) {
   const fastest = computeRoute('standard');
   if (!fastest?.res) return [];
   const cands = [{ kind: 'fastest', r: fastest }];
@@ -54,7 +62,8 @@ export function routeOptions(computeRoute) {
 
   // Step-free only matters if the fastest way has stairs, raised curbs or a no-wheelchair path.
   const barrier = (r) => r.res.edges.some((e) => e.stairs || e.kerb === 'raised' || e.wheelchair === 'no');
-  if (barrier(fastest)) {
+  // …or when it matters anyway: the destination has a listed accessible entrance, or the student prefers step-free.
+  if (barrier(fastest) || alwaysStepFree) {
     const stepfree = computeRoute('accessible');
     if (stepfree?.res) cands.push({ kind: 'stepfree', r: stepfree });
   }
@@ -64,7 +73,7 @@ export function routeOptions(computeRoute) {
 
   const out = [];
   for (const c of cands) {
-    const same = out.find((o) => overlap(o.r, c.r) > 0.85 && overlap(c.r, o.r) > 0.85);
+    const same = out.find((o) => overlap(o.r, c.r) > 0.85 && overlap(c.r, o.r) > 0.85 && sameEnds(o.r, c.r));
     if (same) { same.also.push(c.kind); continue; }
     out.push({ ...c, also: [] });
   }

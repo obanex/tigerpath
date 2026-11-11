@@ -1,0 +1,65 @@
+name: Build self-hosted map
+
+# Cuts the Towson area out of Protomaps' free daily OpenStreetMap build and
+# stores it as plain tile files in public/tiles, so the app needs no map API
+# key and no third-party tile server. Refreshes monthly; run it from the
+# Actions tab any time.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 7 3 * *'
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  # min lon, min lat, max lon, max lat — campus plus downtown Towson
+  BBOX: '-76.645,39.370,-76.580,39.415'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Install pmtiles CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo protomaps/go-pmtiles --pattern '*Linux_x86_64.tar.gz' --output pmtiles.tgz
+          tar -xzf pmtiles.tgz pmtiles && ./pmtiles version
+
+      - name: Find the latest Protomaps build
+        run: |
+          BUILD=""
+          for i in $(seq 0 14); do
+            D=$(date -u -d "-$i day" +%Y%m%d)
+            if curl -sfI "https://build.protomaps.com/$D.pmtiles" > /dev/null; then BUILD=$D; break; fi
+          done
+          test -n "$BUILD" || { echo "No Protomaps build found in the last 15 days"; exit 1; }
+          echo "Using build $BUILD"
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+
+      - name: Extract the Towson area
+        run: ./pmtiles extract "https://build.protomaps.com/$BUILD.pmtiles" basemap.pmtiles --bbox="$BBOX" --maxzoom=15
+
+      - name: Write tile files
+        run: node scripts/build-basemap.mjs basemap.pmtiles "$BUILD"
+
+      - name: Commit and redeploy if the map changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "obanex"
+          git config user.email "69535465+obanex@users.noreply.github.com"
+          git add public/tiles
+          if git diff --cached --quiet -- public/tiles ':!public/tiles/meta.json'; then echo "Map unchanged"; exit 0; fi
+          git commit -m "Update self-hosted map (Protomaps build $BUILD)"
+          git push
+          gh workflow run deploy.yml --ref main

@@ -8,7 +8,7 @@ import L from 'leaflet';
 import buildingsSource from '../data/buildings.js?raw';
 import { patchSource } from '../lib/patch.js';
 
-const KEY = 'tigernav.pins';
+const KEY = 'tigerpath.pins';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) ?? {}; } catch { return {}; } };
 const save = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignore */ } };
 const r6 = (x) => Math.round(x * 1e6) / 1e6;

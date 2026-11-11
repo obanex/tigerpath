@@ -1,4 +1,4 @@
-// OpenStreetMap -> TigerNav data.
+// OpenStreetMap -> TigerPath data.
 //
 // `npm run fetch-osm` runs OVERPASS_QUERY and stores the processed result in
 // public/data/osm-campus.json. At startup the app loads that file (if present)

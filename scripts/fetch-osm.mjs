@@ -21,7 +21,7 @@ async function fetchOverpass() {
       console.log(`Querying ${url} …`);
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'TigerNav campus map data fetch' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'TigerPath campus map data fetch' },
         body: 'data=' + encodeURIComponent(OVERPASS_QUERY),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

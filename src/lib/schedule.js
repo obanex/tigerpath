@@ -1,7 +1,7 @@
 // Class schedule: plan a day of classes, check walking feasibility, export .ics.
 
 export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
-const KEY = 'tigernav.schedule.v1';
+const KEY = 'tigerpath.schedule.v1';
 
 export function loadSchedule(storage = globalThis.localStorage) {
   try { return JSON.parse(storage?.getItem(KEY) ?? '[]'); } catch { return []; }
@@ -47,7 +47,7 @@ const stamp = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
  * calendar apps interpret in the user's own zone — correct for an on-campus schedule.
  */
 export function toICS(classes, { termStart, termEnd, buildingName = (id) => id, now = new Date() }) {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TigerNav//Class Schedule//EN', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TigerPath//Class Schedule//EN', 'CALSCALE:GREGORIAN'];
   const start = new Date(termStart + 'T00:00:00');
   const until = termEnd.replace(/-/g, '') + 'T235959';
   for (const c of classes) {
@@ -59,7 +59,7 @@ export function toICS(classes, { termStart, termEnd, buildingName = (id) => id, 
     const t = (s) => s.replace(':', '') + '00';
     lines.push(
       'BEGIN:VEVENT',
-      `UID:${c.id}@tigernav`,
+      `UID:${c.id}@tigerpath`,
       `DTSTAMP:${stamp(now)}`,
       `DTSTART:${ymd}T${t(c.start)}`,
       `DTEND:${ymd}T${t(c.end)}`,

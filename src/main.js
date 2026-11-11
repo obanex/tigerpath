@@ -15,8 +15,8 @@ const CENTER = [39.3925, -76.6110];
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const store = {
-  get(k, d) { try { return JSON.parse(localStorage.getItem('tigernav.' + k)) ?? d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('tigernav.' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+  get(k, d) { try { return JSON.parse(localStorage.getItem('tigerpath.' + k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('tigerpath.' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
 };
 const isMobile = () => matchMedia('(max-width: 760px)').matches;
 const EDIT = new URLSearchParams(location.search).has('edit');

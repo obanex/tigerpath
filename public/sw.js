@@ -1,6 +1,6 @@
-// TigerNav service worker: app shell works offline, map tiles you've viewed are cached.
-const APP = 'tigernav-app-v1';
-const TILES = 'tigernav-tiles-v1';
+// TigerPath service worker: app shell works offline, map tiles you've viewed are cached.
+const APP = 'tigerpath-app-v1';
+const TILES = 'tigerpath-tiles-v1';
 const MAX_TILES = 1500;
 const TILE_HOSTS = /(basemaps\.cartocdn\.com|tile\.openstreetmap\.org|server\.arcgisonline\.com)$/;
 

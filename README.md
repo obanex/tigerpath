@@ -1,8 +1,8 @@
-# TigerNav — Towson University campus navigation
+# TigerPath — Towson University campus navigation
 
 A campus map and wayfinding app for Towson University, inspired by UMD's TerpNav, with more features.
 
-| | TerpNav | TigerNav |
+| | TerpNav | TigerPath |
 |---|---|---|
 | Click-to-route walking directions + ETA | ✅ | ✅ turn-by-turn, with arrival time |
 | Accessible routing (avoid obstacles) | ✅ | ✅ avoids stairs and `wheelchair=no` paths, slower pace for estimates |
@@ -53,7 +53,7 @@ OpenStreetMap into `public/data/osm-campus.json`. When that file exists the app 
 - draws building footprints and snaps matching building pins to them.
 
 Improving OSM (for example tagging `lit=yes`, `wheelchair=*`, `highway=steps` and `emergency=phone` around campus)
-directly improves TigerNav. A Towson GIS class or mapathon would be a good way to do it.
+directly improves TigerPath. A Towson GIS class or mapathon would be a good way to do it.
 
 ## Project layout
 

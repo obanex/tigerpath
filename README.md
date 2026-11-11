@@ -1,6 +1,6 @@
 # TigerPath — Towson University campus navigation
 
-A campus map and wayfinding app for Towson University, inspired by UMD's TerpNav, with more features.
+A campus map and wayfinding app for Towson University.
 
 | | TerpNav | TigerPath |
 |---|---|---|

@@ -11,6 +11,11 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Official Playwright image: WebKit and Chromium come preinstalled (installing them on the runner can hang)
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,12 +23,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps webkit chromium
       - run: npm run build
       - name: Run smoke test
         run: |
           npx vite preview --port 4173 --strictPort &
-          npx wait-on -t 30000 http://localhost:4173/ 2>/dev/null || sleep 5
+          node -e "(async()=>{for(let i=0;i<30;i++){try{if((await fetch('http://localhost:4173/')).ok)return}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)})()"
           node tests/browser/smoke.mjs
       - name: Save screenshots
         if: always()

@@ -7,7 +7,7 @@
 import { chromium, webkit, devices } from 'playwright';
 import { writeFile, mkdir } from 'node:fs/promises';
 
-const URL = process.env.SMOKE_URL ?? 'http://localhost:4173/';
+const BASE = process.env.SMOKE_URL ?? 'http://localhost:4173/';
 const OUT = process.env.SMOKE_OUT ?? 'smoke-results';
 const targets = [
   { name: 'iphone-webkit', engine: webkit, device: devices['iPhone 13'] },
@@ -24,7 +24,7 @@ for (const t of targets.filter((t) => !only || t.name.includes(only))) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   // Outside services (weather) may be down or blocked; the app copes, so only our own files count as failures.
-  const ours = (u) => u.startsWith(new URL(URL).origin);
+  const ours = (u) => u.startsWith(new URL(BASE).origin);
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`console: ${m.text()}`); });
   page.on('requestfailed', (r) => { if (ours(r.url())) errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`); });
   page.on('response', (r) => { if (ours(r.url()) && r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`); });
@@ -52,7 +52,7 @@ for (const t of targets.filter((t) => !only || t.name.includes(only))) {
     await writeFile(`${OUT}/${t.name}-${label}.jpg`, shot);
   };
   try {
-    await page.goto(URL, { waitUntil: 'load' });
+    await page.goto(BASE, { waitUntil: 'load' });
     await page.waitForSelector('.bmark', { state: 'attached', timeout: 20000 });
     if (await page.locator('#guestBtn').isVisible().catch(() => false)) await page.tap('#guestBtn'); // welcome screen
     await snapshot('load');

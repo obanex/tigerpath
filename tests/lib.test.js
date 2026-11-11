@@ -63,6 +63,9 @@ test('search: codes, names, aliases, departments, typos, rooms', () => {
   const r = search(idx, 'la 4310')[0];
   assert.equal(r.item.id, 'LA'); assert.equal(r.room.floor, 4);
   assert.deepEqual(parseRoom('ST-102b'), { code: 'ST', room: '102B', floor: 1 });
+  assert.equal(search(idx, 'chick fil a')[0].item.id, 'UU');
+  assert.equal(search(idx, 'health center')[0].item.id, 'WW');
+  assert.equal(search(idx, 'paca')[0].item.id, 'WV1');
   assert.equal(search(idx, 'zzzz').length, 0);
 });
 
@@ -118,7 +121,7 @@ test('editor patches building coordinates in source text', async () => {
   const mod = await import('data:text/javascript,' + encodeURIComponent(out));
   const by = Object.fromEntries(mod.BUILDINGS.map((b) => [b.id, b]));
   assert.deepEqual([by.LA.lat, by.LA.lng, by.CK.lat, by.CK.lng], [39.1, -76.2, 39.3, -76.4]);
-  assert.equal(by.HH.lat, 39.3941); // untouched
+  assert.equal(by.HH.lat, 39.39412); // untouched
 });
 
 test('OSM processing keeps named places from `out center`', () => {
@@ -127,4 +130,22 @@ test('OSM processing keeps named places from `out center`', () => {
     { type: 'node', id: 6, lat: 39.39, lon: -76.61, tags: { amenity: 'cafe', name: 'Campus Cafe' } },
   ] });
   assert.deepEqual(data.pois.map((p) => p.name), ['Johnny Unitas Stadium', 'Campus Cafe']);
+});
+
+test('mainComponent returns the largest connected piece', () => {
+  const g = new Graph();
+  for (const [id, lat] of [['a', 39.39], ['b', 39.391], ['c', 39.392], ['x', 39.40], ['y', 39.401]]) g.addNode(id, lat, -76.61);
+  g.addEdge('a', 'b'); g.addEdge('b', 'c'); g.addEdge('x', 'y');
+  assert.deepEqual([...g.mainComponent()].sort(), ['a', 'b', 'c']);
+});
+
+test('directions fold tiny kinks into meaningful steps', () => {
+  const g = new Graph();
+  // 200 m north with a 3 m sideways jog in the middle, then 100 m east
+  const pts = [[39.3900, -76.6100], [39.3909, -76.6100], [39.3909, -76.61003], [39.3918, -76.61003], [39.3918, -76.6088]];
+  pts.forEach(([lat, lng], i) => g.addNode(String(i), lat, lng));
+  for (let i = 0; i + 1 < pts.length; i++) g.addEdge(String(i), String(i + 1));
+  const steps = directions(g, route(g, '0', '4'), { toLabel: 'X' });
+  assert.equal(steps.length, 3, steps.map((s) => s.text).join(' | '));
+  assert.match(steps[1].text, /^Turn right/);
 });

@@ -32,33 +32,24 @@ npm run build      # static site in dist/ — host anywhere (towson.edu, GitHub 
 Every push to `main` runs the tests, builds the site and publishes it to GitHub Pages
 (`.github/workflows/deploy.yml`). One-time setup: **Settings → Pages → Source: GitHub Actions**.
 
-## ⚠️ Before launch: verify the data
+## Data sources & what still needs checking
 
-The seed data in `src/data/` was compiled without access to official TU GIS data, so:
+**From OpenStreetMap (refreshed monthly by the *Fetch OpenStreetMap data* workflow):** building footprints and
+positions, 14,000+ walkway segments with stairs, lighting and wheelchair tags, 110 emergency phones and AEDs, parking
+areas, and food places. Many campus footprints were traced from TU engineering drawings. The workflow saves each
+download to the `osm-data` branch; copy `public/data/osm-campus.json` from there into `main` to update the app.
 
-- **Building positions are approximate.** Fix them in a few minutes with the editor:
-  open `http://localhost:5173/?edit=1`, switch to **Satellite**, drag each pin onto the building's main
-  entrance, then click **Download buildings.js** and replace `src/data/buildings.js`.
-- **Hours are placeholders**, marked `verified: false`; the app labels them "sample hours — verify".
+**Still needs checking against current university info:**
+- **Hours** are placeholders, marked `verified: false`; the app labels them "sample hours — verify".
 - **The shuttle route is a sample.** Replace `SHUTTLES` in `src/data/places.js` with real routes (or a GTFS feed).
-- **Emergency phones / AEDs are intentionally empty** until loaded from a verified source. The app never invents safety equipment.
-- **Departments and parking permits** should be checked against current university listings.
+- **Departments and parking permit types** should be confirmed with TU.
+- **Smith Hall** is flagged as under renovation. Remove the `note` once it reopens.
 
-### Real walkways from OpenStreetMap
+To fine-tune any pin, open the site with `?edit=1`, switch to **Satellite**, drag the pin, click **Download buildings.js**
+and replace `src/data/buildings.js`.
 
-```bash
-npm run fetch-osm
-```
-
-This downloads Towson's footpaths, stairs, lighting tags, building footprints, parking and emergency phones from
-OpenStreetMap into `public/data/osm-campus.json`. When that file exists the app automatically:
-- routes along real sidewalks and paths instead of the approximate building-to-building mesh,
-- uses real stairs / lighting / wheelchair tags for the ♿ and 🌙 modes,
-- names paths in directions ("Turn left on Cross Campus Drive"),
-- draws building footprints and snaps matching building pins to them.
-
-Improving OSM (for example tagging `lit=yes`, `wheelchair=*`, `highway=steps` and `emergency=phone` around campus)
-directly improves TigerPath. A Towson GIS class or mapathon would be a good way to do it.
+Improving OSM (for example tagging `lit=yes`, `wheelchair=*` and `highway=steps` around campus) directly improves
+TigerPath's ♿ and 🌙 routing. A Towson GIS class or mapathon would be a good way to do it.
 
 ## Project layout
 

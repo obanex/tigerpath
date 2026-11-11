@@ -37,6 +37,7 @@ export function createIndex(items) {
     aliases: (item.aliases ?? []).map(norm),
     depts: (item.depts ?? []).map(norm),
     amen: (item.amenities ?? []).map(norm),
+    food: (item.food ?? []).map(norm),
   }));
 }
 
@@ -49,6 +50,7 @@ function scoreToken(t, e) {
   if (e.aliases.some((a) => a.split(' ').some((w) => w.startsWith(t)))) s = Math.max(s, 50);
   if (e.depts.some((d) => d.split(' ').some((w) => w.startsWith(t)))) s = Math.max(s, 40);
   if (e.amen.some((a) => a.startsWith(t))) s = Math.max(s, 35);
+  if (e.food.some((f) => f.split(' ').some((w) => w.startsWith(t)))) s = Math.max(s, 45);
   if (s === 0 && t.length >= 4) {
     const max = t.length >= 7 ? 2 : 1;
     const pool = [...e.words, ...e.aliases.flatMap((a) => a.split(' ')), ...e.depts.flatMap((d) => d.split(' '))];

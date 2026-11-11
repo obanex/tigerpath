@@ -105,9 +105,10 @@ const refreshMarkers = () => markers.forEach((m) => m.setIcon(buildingIcon(m.bui
 function updateLabels() {
   const show = S.layers.labels && map.getZoom() >= 17;
   map.getContainer().classList.toggle('hide-labels', !show);
+  map.getContainer().classList.toggle('hide-detail', map.getZoom() < 17); // phones, AEDs, off-campus lots
 }
 map.on('zoomend', updateLabels);
-document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}</style>');
+document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}</style>');
 
 function drawParking() {
   layers.parking.clearLayers();
@@ -115,7 +116,7 @@ function drawParking() {
   for (const p of list) {
     if (S.permit && !p.permits.includes(S.permit)) continue;
     const permits = p.permits.map((x) => PERMIT_LABELS[x]).join(', ') || 'See signage';
-    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="pmark">P</div>', iconSize: [24, 24] }), title: p.name })
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: p.fromOsm ? 'zd' : '', html: '<div class="pmark">P</div>', iconSize: [24, 24] }), title: p.name })
       .bindPopup(`<b>${esc(p.name)}</b><br><span class="muted">${p.kind === 'garage' ? 'Garage' : 'Lot'} · ${esc(permits)}</span>
         ${p.ev ? '<br>⚡ EV charging' : ''}${p.accessible ? '<br>♿ Accessible spaces' : ''}${p.note ? `<br>${esc(p.note)}` : ''}
         <div class="ctx-menu"><button data-route-to="parking:${esc(p.id)}">Directions here</button><button data-route-from="parking:${esc(p.id)}">Walk from here</button></div>`)
@@ -135,9 +136,8 @@ function drawShuttles() {
 function drawSafety() {
   layers.safety.clearLayers();
   for (const s of safety) {
-    const icon = s.kind === 'aed' ? '❤️' : '☎️';
-    L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', html: `<div class="smark" style="background:${s.kind === 'aed' ? '#b91c1c' : '#1d4ed8'}">${icon}</div>`, iconSize: [22, 22] }), title: s.name })
-      .bindPopup(`<b>${esc(s.name)}</b>${s.where ? `<br>${esc(s.where)}` : ''}`).addTo(layers.safety);
+    L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'zd', html: `<div class="dot" style="background:${s.kind === 'aed' ? '#b91c1c' : '#1d4ed8'}" aria-hidden="true"></div>`, iconSize: [12, 12] }), title: s.kind === 'aed' ? 'AED' : 'Emergency phone', alt: s.name })
+      .bindPopup(`<b>${s.kind === 'aed' ? '❤️ AED' : '☎️ Emergency phone'}</b>${s.name && !/^(AED|Emergency phone)$/.test(s.name) ? `<br>${esc(s.name)}` : ''}${s.where ? `<br>${esc(s.where)}` : ''}`).addTo(layers.safety);
   }
 }
 function drawOutlines() {
@@ -161,7 +161,7 @@ function buildGraph() {
   const pts = [...S.buildings, ...PARKING].map((p) => ({ id: p.id, lat: p.lat, lng: p.lng, label: p.name }));
   if (S.osm) {
     S.graph = graphFromProcessed(S.osm);
-    const walk = new Set(S.graph.nodes.keys());
+    const walk = S.graph.mainComponent(); // ignore isolated fragments (gated fields, private drives)
     for (const p of pts) { // connect each place to the 2 nearest walkway nodes
       const near = S.graph.nearest(p, 2, (n) => walk.has(n.id));
       S.graph.addNode(p.id, p.lat, p.lng, p.label);
@@ -172,6 +172,7 @@ function buildGraph() {
     S.graph = buildSeedGraph(pts);
     S.graphSource = 'seed';
   }
+  S.mainNodes = S.graph.mainComponent();
   // precompute "near an emergency phone" for well-lit routing
   const phones = safety.filter((s) => s.kind === 'phone');
   if (phones.length) {
@@ -201,7 +202,7 @@ function placeNode(place) {
   const pt = place.type === 'me' ? S.me : place;
   if (!pt) return null;
   const id = '@tmp' + ++tmpSeq;
-  const near = S.graph.nearest(pt, 3, (n) => !n.id.startsWith('@'));
+  const near = S.graph.nearest(pt, 3, (n) => S.mainNodes.has(n.id));
   S.graph.addNode(id, pt.lat, pt.lng);
   near.forEach((n) => S.graph.addEdge(id, n.id));
   const label = place.type === 'me' ? 'your location' : place.label ?? 'dropped pin';
@@ -350,6 +351,7 @@ function renderDetail() {
       <div><h2>${esc(b.name)}</h2><span class="badge">${cat.icon} ${cat.label}</span></div></div>
     ${S.room ? `<div class="room-box"><b>Room ${esc(S.room.room)}</b> · ${typeof S.room.floor === 'number' ? `Floor ${S.room.floor}` : esc(S.room.floor)}
       <div class="sub muted">Room numbers usually start with the floor number. Elevators are near the main entrance.</div></div>` : ''}
+    ${b.note ? `<div class="room-box">⚠️ ${esc(b.note)}</div>` : ''}
     ${st.label ? `<div class="status ${st.open ? (st.closingSoon ? 'soon' : 'open') : 'closed'}">${esc(st.label)} ${b.hours?.verified === false ? '<span class="unverified">(sample hours — verify)</span>' : ''}</div>` : ''}
     <div class="btn-row">
       <button class="btn primary" id="dirTo">Directions</button>
@@ -358,6 +360,7 @@ function renderDetail() {
       <button class="btn" id="shareBtn">Share</button>
     </div>
     ${b.depts?.length ? `<h2 class="h">Inside</h2><div>${b.depts.map((d) => `<span class="tag">${esc(d)}</span>`).join('')}</div>` : ''}
+    ${b.food?.length ? `<h2 class="h">Food here</h2><div>${b.food.map((f) => `<span class="tag">🍴 ${esc(f)}</span>`).join('')}</div>` : ''}
     ${b.amenities?.length ? `<h2 class="h">Amenities</h2><div>${b.amenities.map((a) => `<span class="tag">${esc(AMENITY_LABELS[a] ?? a)}</span>`).join('')}</div>` : ''}
     ${b.hours ? `<h2 class="h">Hours</h2><table class="hours">${weekTable(b.hours).map((r) => `<tr class="${r.day === today ? 'today' : ''}"><td>${r.day}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>` : ''}
     <h2 class="h">Nearby</h2><ul class="list" id="nearby"></ul>`;
@@ -643,7 +646,7 @@ function renderLayersTab() {
     ? `Walkways from OpenStreetMap (${new Date(S.osm.generated).toLocaleDateString()}): ${S.osm.edges.length.toLocaleString()} path segments.`
     : 'Routing uses an approximate path network between buildings. Run <code>npm run fetch-osm</code> to load real walkways.')
     + (phones ? ` ${phones} emergency phones/AEDs loaded.` : ' No verified emergency phone data loaded yet.')
-    + ' Building positions are approximate until verified.';
+    + (S.graphSource === 'osm' ? ' Building locations from OpenStreetMap footprints.' : ' Building positions are approximate until verified.');
 }
 
 // ---------------------------------------------------------------- theme

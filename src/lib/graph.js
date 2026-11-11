@@ -42,6 +42,18 @@ export class Graph {
     for (const [a, list] of this.adj) for (const e of list) if (a < e.to) out.push({ from: a, ...e });
     return out;
   }
+  /** Node ids of the largest connected piece of the network. */
+  mainComponent() {
+    const seen = new Set();
+    let best = new Set();
+    for (const id of this.nodes.keys()) {
+      if (seen.has(id)) continue;
+      const comp = new Set([id]); const stack = [id]; seen.add(id);
+      while (stack.length) for (const e of this.adj.get(stack.pop())) if (!seen.has(e.to)) { seen.add(e.to); comp.add(e.to); stack.push(e.to); }
+      if (comp.size > best.size) best = comp;
+    }
+    return best;
+  }
   /** k nearest node ids to a point, optionally filtered. */
   nearest(p, k = 1, filter = () => true) {
     return [...this.nodes.values()].filter(filter)
@@ -74,10 +86,36 @@ export function buildSeedGraph(points, { maxEdge = 320, overrides = {} } = {}) {
       if (empty) g.addEdge(a.id, b.id);
     }
   }
+  connectComponents(g);
   for (const [a, b] of overrides.remove ?? []) g.removeEdge(a, b);
   for (const [a, b, flags] of overrides.add ?? []) g.addEdge(a, b, flags);
   for (const [a, b, flags] of overrides.flags ?? []) g.setEdgeFlags(a, b, flags);
   return g;
+}
+
+/** Join disconnected clusters (e.g. far-off athletics fields) via their closest pair of nodes. */
+function connectComponents(g) {
+  for (;;) {
+    const comp = new Map();
+    let n = 0;
+    for (const id of g.nodes.keys()) {
+      if (comp.has(id)) continue;
+      const stack = [id]; comp.set(id, n);
+      while (stack.length) for (const e of g.adj.get(stack.pop())) if (!comp.has(e.to)) { comp.set(e.to, n); stack.push(e.to); }
+      n++;
+    }
+    if (n <= 1) return;
+    let best = null; // closest pair between component 0 and any other component
+    for (const [a, ca] of comp) {
+      if (ca !== 0) continue;
+      for (const [b, cb] of comp) {
+        if (cb === 0) continue;
+        const d = distance(g.nodes.get(a), g.nodes.get(b));
+        if (!best || d < best.d) best = { a, b, d };
+      }
+    }
+    g.addEdge(best.a, best.b);
+  }
 }
 
 // ---------- Routing profiles ----------
@@ -150,18 +188,30 @@ export function directions(g, result, { fromLabel, toLabel } = {}) {
   const { path, edges } = result;
   const pts = path.map((id) => g.nodes.get(id));
   if (pts.length < 2) return [{ text: `You're already at ${toLabel ?? 'your destination'}.`, dist: 0, type: 'arrive' }];
-  const segs = [];
-  for (let i = 0; i < edges.length; i++) {
-    const b = bearing(pts[i], pts[i + 1]);
-    const e = edges[i];
-    const last = segs[segs.length - 1];
-    if (last && Math.abs(turnAngle(last.endBearing, b)) < 35 && (last.name ?? '') === (e.name ?? '') && !!last.stairs === !!e.stairs) {
-      last.dist += e.dist; last.endBearing = b; last.to = i + 1;
-      if (pts[i].label) last.passes.push(pts[i].label);
-    } else {
-      segs.push({ startBearing: b, endBearing: b, dist: e.dist, name: e.name, stairs: e.stairs, from: i, to: i + 1, passes: [] });
-    }
+  // 1. one raw segment per edge
+  let segs = edges.map((e, i) => ({ from: i, to: i + 1, dist: e.dist, name: e.name, stairs: !!e.stairs, passes: [] }));
+  const segBearing = (s) => bearing(pts[s.from], pts[s.to]);
+  // 2. absorb tiny segments (real path data is full of 2–10 m kinks) into the previous one
+  const MIN = 15; // meters
+  const merged = [];
+  for (const s of segs) {
+    const last = merged[merged.length - 1];
+    if (last && (s.dist < MIN || last.dist < MIN) && (!s.name || !last.name || s.name === last.name)) {
+      last.to = s.to; last.dist += s.dist; last.stairs ||= s.stairs; last.name ||= s.name;
+      if (pts[s.from].label) last.passes.push(pts[s.from].label);
+    } else merged.push({ ...s });
   }
+  // 3. merge straight-ish continuations on the same path
+  segs = [];
+  for (const s of merged) {
+    const last = segs[segs.length - 1];
+    const limit = s.name && s.name === last?.name ? 70 : 35; // named roads curve; follow them
+    if (last && Math.abs(turnAngle(segBearing(last), segBearing(s))) < limit && (last.name ?? '') === (s.name ?? '') && last.stairs === s.stairs) {
+      last.to = s.to; last.dist += s.dist;
+      if (pts[s.from].label) last.passes.push(pts[s.from].label);
+    } else segs.push(s);
+  }
+  for (const s of segs) { s.startBearing = segBearing(s); s.endBearing = s.startBearing; }
   const steps = [];
   segs.forEach((s, i) => {
     const along = s.name ? ` on ${s.name}` : '';

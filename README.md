@@ -2,25 +2,27 @@
 
 A campus map and wayfinding app for Towson University.
 
-| | TerpNav | TigerPath |
-|---|---|---|
-| Click-to-route walking directions + ETA | ✅ | ✅ turn-by-turn, with arrival time |
-| Accessible routing (avoid obstacles) | ✅ | ✅ avoids stairs and `wheelchair=no` paths, slower pace for estimates |
-| Well-lit night routing | — | ✅ prefers lit paths and paths near emergency phones |
-| Search | buildings | buildings, codes, departments, offices, aliases, typos, **room numbers** (`LA 4310` → Liberal Arts, floor 4) |
-| "Find nearest" | — | food open now, printing, study space, restrooms, accessible entrances, parking — ranked by real walking time |
-| Class schedule planner | — | add classes, see each day's route, flags transitions you can't make on time, export to calendar (.ics) |
-| Live walking mode | — | follows GPS, reroutes when you go off course, tells you when you've arrived |
-| Open/closed status | — | live "Open · closes 9pm" with weekly hours |
-| Shareable links | — | every building, route and schedule day has its own URL |
-| Layers | ✅ | parking (filter by permit), shuttle, emergency phones/AEDs, building footprints, satellite |
-| Mobile | partial | bottom-sheet UI, installable (PWA), works offline for areas you've viewed |
-| Dark mode, keyboard & screen-reader support | — | ✅ |
-| Student accounts | — | ✅ on-device now, or cloud sync with Supabase (see below) |
-| Step & mile goals | — | ✅ daily goals, progress rings, streaks, 7-day chart; counts walks around campus |
-| Class reminders | — | ✅ you choose how early; can add walking time from your previous class |
-| Accessible trails layer | — | ✅ step-free paths, stairs and curbs to avoid, rough surfaces, curb cuts, accessible parking, ramps/elevators/entrances |
-| Data editor for staff | — | ✅ drag pins on satellite imagery, download the updated data file |
+## Features
+
+| Feature | What it does |
+|---|---|
+| Walking directions | Turn-by-turn steps with walking time and arrival time |
+| Accessible routing | Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; slower pace for time estimates |
+| Well-lit night routing | Prefers lit paths and paths near emergency phones |
+| Search | Buildings, codes, departments, offices, aliases, typos and **room numbers** (`LA 4310` → Liberal Arts, floor 4) |
+| Find nearest | Food open now, printing, study space, restrooms, accessible entrances and parking, ranked by real walking time |
+| Class schedule planner | Add classes, see each day's route, flags transitions you can't make on time, export to calendar (.ics) |
+| Live walking mode | Follows GPS, reroutes when you go off course, tells you when you've arrived |
+| Open/closed status | Live "Open · closes 9pm" with weekly hours |
+| Shareable links | Every building, route and schedule day has its own URL |
+| Map layers | Parking (filter by permit), shuttle, emergency phones/AEDs, building footprints, satellite |
+| Mobile | Bottom-sheet layout, installable to the home screen, works offline for areas you've viewed |
+| Accessibility of the app itself | Dark mode, keyboard navigation and screen-reader support |
+| Student accounts | On-device now, or cloud sync with Supabase (see below) |
+| Step & mile goals | Daily goals, progress rings, streaks and a 7-day chart; counts walks around campus |
+| Class reminders | Students choose how early; can add walking time from the previous class |
+| Accessible trails layer | Step-free paths, stairs and curbs to avoid, rough surfaces, curb cuts, accessible parking, ramps/elevators/entrances |
+| Data editor for staff | Drag pins on satellite imagery and add accessibility features, then download the updated data file |
 
 ## Quick start
 

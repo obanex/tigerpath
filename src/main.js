@@ -55,7 +55,7 @@ let index = createIndex(S.buildings);
 const safety = [...SAFETY];
 
 // ---------------------------------------------------------------- map
-const map = L.map('map', { zoomControl: false, maxZoom: 20, minZoom: 14 }).setView(CENTER, 16);
+const map = L.map('map', { zoomControl: false, maxZoom: 20, minZoom: 13 }).setView(CENTER, 16);
 L.control.zoom({ position: 'topright' }).addTo(map);
 L.control.scale({ position: 'bottomright', imperial: true, metric: true }).addTo(map);
 
@@ -142,9 +142,12 @@ function updateLabels() {
   const show = S.layers.labels && map.getZoom() >= 17;
   map.getContainer().classList.toggle('hide-labels', !show);
   map.getContainer().classList.toggle('hide-detail', map.getZoom() < 17); // phones, AEDs, off-campus lots
+  map.getContainer().classList.toggle('far-out', map.getZoom() < 15); // town view: one campus marker instead of 45 pins
 }
 map.on('zoomend', updateLabels);
-document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}</style>');
+document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}.far-out .bmark,.far-out .pmark{display:none}.campus-pin{display:none}.far-out .campus-pin{display:flex}</style>');
+L.marker(CENTER, { icon: L.divIcon({ className: '', html: '<div class="campus-pin"><span>TU</span>Towson University</div>', iconSize: [190, 36], iconAnchor: [95, 18] }), title: 'Zoom in to Towson University', keyboard: true, zIndexOffset: 2000 })
+  .on('click', () => map.flyTo(CENTER, 16)).addTo(map);
 
 function drawParking() {
   layers.parking.clearLayers();
@@ -288,6 +291,7 @@ function placeNode(place, profile = 'standard') {
   if (!pt) return null;
   const id = '@tmp' + ++tmpSeq;
   const near = S.graph.nearest(pt, 3, (n) => S.mainNodes.has(n.id));
+  if (!near.length || near[0].d > 300) return { far: true, cleanup() {} }; // walking paths only cover campus; don't invent long straight-line links
   S.graph.addNode(id, pt.lat, pt.lng);
   near.forEach((n) => S.graph.addEdge(id, n.id));
   const label = place.type === 'me' ? 'your location' : place.label ?? 'dropped pin';
@@ -298,6 +302,7 @@ function computeRoute(fromPlace, toPlace, profile = S.profile) {
   const a = placeNode(fromPlace, profile), b = placeNode(toPlace, profile);
   try {
     if (!a || !b) return null;
+    if (a.far || b.far) return { far: true, a, b, res: null };
     const res = route(S.graph, a.id, b.id, profile, { phones: safety.some((s) => s.kind === 'phone'), strict: !!S.settings.strictAccess });
     if (!res) return { a, b, res: null };
     const latlngs = res.path.map((id) => { const n = S.graph.nodes.get(id); return [n.lat, n.lng]; });
@@ -581,6 +586,7 @@ function updateRoute({ fit = true } = {}) {
   if (S.from.type === 'me' && !S.me) { out.innerHTML = '<p class="hint">Waiting for your location…</p>'; return; }
   const r = computeRoute(S.from, S.to);
   S.lastRoute = r;
+  if (r?.far) { layers.route.clearLayers(); out.innerHTML = '<p class="hint">Walking directions cover the Towson campus and the streets right around it. That spot is too far from campus paths. Try a closer starting point.</p>'; return; }
   if (!r?.res) { layers.route.clearLayers(); out.innerHTML = '<p class="hint">No route found with these settings. Try another route type.</p>'; return; }
   drawRoute(r);
   if (fit) map.flyToBounds(L.latLngBounds(r.latlngs), { ...padding(), maxZoom: 18, duration: 0.6 });

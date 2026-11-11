@@ -143,7 +143,7 @@ Temporary closures go in `CLOSURES` in `src/data/places.js` with an `until` date
 
 ## The map
 
-The street map is **self-hosted**: `public/tiles` holds vector tiles for campus and downtown Towson, cut from
+The street map is **self-hosted**: `public/tiles` holds vector tiles for greater Towson (Rodgers Forge to Loch Raven, up to the Beltway), cut from
 [Protomaps](https://protomaps.com)' free daily OpenStreetMap builds. There's no API key, no tile provider and no usage
 limit, and it works offline once loaded. The **Build self-hosted map** workflow refreshes it on the 3rd of each month
 (or run it from the Actions tab), commits the new tiles and redeploys. To cover a bigger area, widen `BBOX` in

@@ -18,6 +18,11 @@ export const OVERPASS_QUERY = `
   way["amenity"="parking"](${CAMPUS_BBOX.join(',')});
   node["emergency"~"^(phone|defibrillator)$"](${CAMPUS_BBOX.join(',')});
   node["entrance"](${CAMPUS_BBOX.join(',')});
+  node["kerb"](${CAMPUS_BBOX.join(',')});
+  node["barrier"="kerb"](${CAMPUS_BBOX.join(',')});
+  node["highway"="elevator"](${CAMPUS_BBOX.join(',')});
+  node["automatic_door"](${CAMPUS_BBOX.join(',')});
+  node["amenity"="parking_space"]["parking_space"="disabled"](${CAMPUS_BBOX.join(',')});
 );
 out body;
 >;
@@ -27,11 +32,31 @@ out skel qt;
   nwr["amenity"~"^(clinic|doctors|cafe|fast_food|restaurant|food_court|library)$"]["name"](${CAMPUS_BBOX.join(',')});
   nwr["place"="square"](${CAMPUS_BBOX.join(',')});
   nwr["highway"="pedestrian"]["name"](${CAMPUS_BBOX.join(',')});
+  way["amenity"="parking_space"]["parking_space"="disabled"](${CAMPUS_BBOX.join(',')});
 );
 out center tags;`;
 
 // Unnamed houses around campus are skipped to keep the data file small.
 const CAMPUS_BUILDING_TYPES = new Set(['university', 'college', 'school', 'dormitory', 'stadium', 'sports_hall', 'parking']);
+
+const ROUGH_SURFACES = new Set(['gravel', 'fine_gravel', 'pebblestone', 'grass', 'dirt', 'earth', 'ground', 'sand', 'mud', 'unpaved', 'woodchips', 'wood_chips', 'rock', 'grass_paver']);
+const BAD_SMOOTHNESS = new Set(['bad', 'very_bad', 'horrible', 'very_horrible', 'impassable']);
+const isAutomatic = (t) => (t.automatic_door && t.automatic_door !== 'no') || t.door === 'automatic';
+
+/** Edge flags that matter for accessible / night routing, from an OSM way's tags. */
+export function wayFlags(t) {
+  const flags = {};
+  if (t.highway === 'steps') flags.stairs = true;
+  if (t.lit === 'yes') flags.lit = true; else if (t.lit === 'no') flags.lit = false;
+  if (['no', 'yes', 'limited'].includes(t.wheelchair)) flags.wheelchair = t.wheelchair;
+  if (t.ramp === 'yes' || t['ramp:wheelchair'] === 'yes') flags.ramp = true;
+  if (ROUGH_SURFACES.has(t.surface) || BAD_SMOOTHNESS.has(t.smoothness)) flags.rough = true;
+  const inc = parseFloat(t.incline);
+  if (!Number.isNaN(inc)) { if (Math.abs(inc) > 8.33) flags.steep = true; } // ADA ramp max 1:12
+  else if ((t.incline === 'up' || t.incline === 'down') && t.highway !== 'steps') flags.sloped = true;
+  if (t.name) flags.name = t.name;
+  return flags;
+}
 
 const WALKABLE_EXCLUDE = (t) => t.foot === 'no' || t.access === 'private' || t.access === 'no' || t.service === 'parking_aisle' && t.foot !== 'yes';
 
@@ -48,52 +73,69 @@ export function processOverpass(json) {
   const entrances = [];
 
   const pois = [];
+  const access = { elevators: [], curbCuts: [], parking: [] };
+  // kerbs on paths: raised kerbs block wheelchairs; unknown barrier=kerb is treated as uncertain
+  const kerb = new Map();
+  for (const el of json.elements) {
+    const t = el.tags;
+    if (el.type !== 'node' || !t) continue;
+    if (t.kerb === 'raised' || t.kerb === 'rolled') kerb.set(el.id, 'raised');
+    else if (t.kerb === 'lowered' || t.kerb === 'flush' || t.kerb === 'no') kerb.set(el.id, 'lowered');
+    else if (t.barrier === 'kerb' && !t.kerb) kerb.set(el.id, 'unknown');
+  }
+  const buildingNodes = new Set();
+
   for (const el of json.elements) {
     const t = el.tags ?? {};
-    if (el.center && t.name) { // from `out center` — named places (stadiums, clinics, food, plazas)
-      pois.push({ name: t.name, kind: t.leisure ?? t.amenity ?? t.place ?? t.highway, lat: el.center.lat, lng: el.center.lon });
+    if (el.center) { // from `out center` — named places and accessible parking areas
+      if (t.amenity === 'parking_space') access.parking.push({ lat: el.center.lat, lng: el.center.lon, capacity: +t.capacity || 1 });
+      else if (t.name) pois.push({ name: t.name, kind: t.leisure ?? t.amenity ?? t.place ?? t.highway, lat: el.center.lat, lng: el.center.lon });
       continue;
     }
-    if (el.type === 'node' && t.name && (t.amenity || t.leisure || t.place)) {
+    if (el.type === 'node' && t.name && (t.amenity || t.leisure || t.place) && t.amenity !== 'parking_space') {
       pois.push({ name: t.name, kind: t.leisure ?? t.amenity ?? t.place, lat: el.lat, lng: el.lon });
     }
     if (el.type === 'node') {
       if (t.emergency === 'phone') safety.push({ kind: 'phone', lat: el.lat, lng: el.lon, name: t.name ?? 'Emergency phone' });
       if (t.emergency === 'defibrillator') safety.push({ kind: 'aed', lat: el.lat, lng: el.lon, name: t.name ?? 'AED', where: t['defibrillator:location'] });
-      if (t.entrance) entrances.push({ id: el.id, lat: el.lat, lng: el.lon, wheelchair: t.wheelchair });
+      if (t.entrance || isAutomatic(t)) entrances.push({ id: el.id, lat: el.lat, lng: el.lon, wheelchair: t.wheelchair, automatic: isAutomatic(t) || undefined, name: t.name ?? t.ref });
+      if (t.highway === 'elevator') access.elevators.push({ id: el.id, lat: el.lat, lng: el.lon, wheelchair: t.wheelchair, level: t.level });
+      if (t.amenity === 'parking_space' && t.parking_space === 'disabled') access.parking.push({ lat: el.lat, lng: el.lon, capacity: +t.capacity || 1 });
       continue;
     }
     if (el.type !== 'way' || !el.nodes) continue;
     const pts = el.nodes.map((id) => nodes.get(id)).filter(Boolean);
     if (t.highway && !WALKABLE_EXCLUDE(t)) {
-      const flags = {};
-      if (t.highway === 'steps') flags.stairs = true;
-      if (t.lit === 'yes') flags.lit = true; else if (t.lit === 'no') flags.lit = false;
-      if (t.wheelchair === 'no') flags.wheelchair = 'no';
-      const inc = parseFloat(t.incline);
-      if (!Number.isNaN(inc) && Math.abs(inc) > 8.33) flags.steep = true; // ADA ramp max 1:12
-      if (t.name) flags.name = t.name;
+      const flags = wayFlags(t);
       for (let i = 0; i + 1 < el.nodes.length; i++) {
         const a = el.nodes[i], b = el.nodes[i + 1];
         if (!nodes.has(a) || !nodes.has(b)) continue;
         usedNodes.add(a); usedNodes.add(b);
-        edges.push([a, b, flags]);
+        const k = kerb.get(a) === 'raised' || kerb.get(b) === 'raised' ? 'raised'
+          : kerb.get(a) === 'unknown' || kerb.get(b) === 'unknown' ? 'unknown' : null;
+        edges.push([a, b, k ? { ...flags, kerb: k } : flags]);
       }
     } else if (t.building && pts.length > 2 && (t.name || t.ref || CAMPUS_BUILDING_TYPES.has(t.building))) {
+      el.nodes.forEach((id) => buildingNodes.add(id));
       const c = centroid(pts.map((p) => ({ lat: p.lat, lng: p.lon })));
       buildings.push({ osmId: el.id, name: t.name ?? null, ref: t.ref ?? null, ...c,
         outline: pts.map((p) => [round(p.lat), round(p.lon)]) });
     } else if (t.amenity === 'parking' && pts.length > 2) {
-      parking.push({ name: t.name ?? 'Parking', ...centroid(pts.map((p) => ({ lat: p.lat, lng: p.lon }))), access: t.access });
+      const c = centroid(pts.map((p) => ({ lat: p.lat, lng: p.lon })));
+      parking.push({ name: t.name ?? 'Parking', ...c, access: t.access });
+      if (+t['capacity:disabled'] > 0) access.parking.push({ ...c, capacity: +t['capacity:disabled'], lot: t.name });
     }
   }
+  for (const [id, k] of kerb) if (k === 'lowered' && usedNodes.has(id)) access.curbCuts.push([round(nodes.get(id).lat), round(nodes.get(id).lon)]);
+  // only keep entrances on campus buildings (skips thousands of house doors)
+  const campusEntrances = entrances.filter((e) => buildingNodes.has(e.id));
 
   return {
     generated: new Date().toISOString(),
     attribution: '© OpenStreetMap contributors (ODbL)',
     nodes: [...usedNodes].map((id) => [id, round(nodes.get(id).lat), round(nodes.get(id).lon)]),
     edges,
-    buildings, parking, safety, entrances, pois,
+    buildings, parking, safety, entrances: campusEntrances, pois, access,
   };
 }
 

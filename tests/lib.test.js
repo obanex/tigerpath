@@ -149,3 +149,30 @@ test('directions fold tiny kinks into meaningful steps', () => {
   assert.equal(steps.length, 3, steps.map((s) => s.text).join(' | '));
   assert.match(steps[1].text, /^Turn right/);
 });
+
+test('OSM accessibility: ramps, kerbs, elevators, entrances, accessible parking', async () => {
+  const { wayFlags } = await import('../src/lib/osm.js');
+  assert.deepEqual(wayFlags({ highway: 'footway', ramp: 'yes', surface: 'gravel', incline: '10%' }), { ramp: true, rough: true, steep: true });
+  assert.deepEqual(wayFlags({ highway: 'footway', incline: 'up', wheelchair: 'yes' }), { wheelchair: 'yes', sloped: true });
+  const data = processOverpass({ elements: [
+    { type: 'node', id: 1, lat: 39.390, lon: -76.610 },
+    { type: 'node', id: 2, lat: 39.391, lon: -76.610, tags: { kerb: 'raised' } },
+    { type: 'node', id: 3, lat: 39.3905, lon: -76.6095, tags: { kerb: 'lowered' } },
+    { type: 'node', id: 4, lat: 39.3906, lon: -76.6090, tags: { entrance: 'main', wheelchair: 'yes', automatic_door: 'button' } },
+    { type: 'node', id: 5, lat: 39.3907, lon: -76.6091 },
+    { type: 'node', id: 6, lat: 39.3908, lon: -76.6092, tags: { entrance: 'yes' } }, // not on a campus building
+    { type: 'node', id: 7, lat: 39.3909, lon: -76.6093, tags: { highway: 'elevator' } },
+    { type: 'node', id: 8, lat: 39.3910, lon: -76.6094, tags: { amenity: 'parking_space', parking_space: 'disabled', capacity: '2' } },
+    { type: 'way', id: 10, nodes: [1, 2], tags: { highway: 'footway' } },
+    { type: 'way', id: 11, nodes: [1, 3, 2], tags: { highway: 'footway', ramp: 'yes' } },
+    { type: 'way', id: 12, nodes: [4, 5, 1, 4], tags: { building: 'university', name: 'Test Hall' } },
+  ] });
+  assert.equal(data.edges.find(([a, b]) => a === 1 && b === 2)[2].kerb, 'raised');
+  assert.deepEqual(data.access.curbCuts, [[39.3905, -76.6095]]);
+  assert.deepEqual(data.entrances.map((e) => [e.id, e.wheelchair, e.automatic]), [[4, 'yes', true]]);
+  assert.equal(data.access.elevators.length, 1);
+  assert.equal(data.access.parking[0].capacity, 2);
+  const g = graphFromProcessed(data);
+  assert.deepEqual(route(g, '1', '2', 'standard').path, ['1', '2']);
+  assert.deepEqual(route(g, '1', '2', 'accessible').path, ['1', '3', '2']); // ramp, not the raised kerb
+});

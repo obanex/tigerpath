@@ -126,13 +126,21 @@ export const PROFILES = {
   night:      { label: 'Well-lit',   speed: 1.34 }, // prefers lit paths, near emergency phones
 };
 
-/** Returns a cost multiplier for an edge, or Infinity if unusable. */
+/**
+ * Returns a cost multiplier for an edge, or Infinity if unusable.
+ * ctx.strict (accessible profile): steep slopes and rough surfaces become impassable.
+ */
 export function edgeCost(edge, profile, ctx = {}) {
   if (edge.closed) return Infinity;
   let f = 1;
   if (profile === 'accessible') {
-    if (edge.stairs || edge.wheelchair === 'no') return Infinity;
-    if (edge.steep) f *= 2.5;
+    if (edge.stairs || edge.wheelchair === 'no' || edge.kerb === 'raised') return Infinity;
+    if (edge.steep) { if (ctx.strict) return Infinity; f *= 2.5; }
+    if (edge.rough) { if (ctx.strict) return Infinity; f *= 1.8; }
+    if (edge.sloped) f *= 1.2;
+    if (edge.kerb === 'unknown') f *= 1.5;
+    if (edge.wheelchair === 'limited') f *= 1.5;
+    if (edge.ramp || edge.wheelchair === 'yes') f *= 0.9; // known-good: mild preference
   } else if (edge.stairs) {
     f *= 1.15; // stairs are a bit slower even for walkers
   }

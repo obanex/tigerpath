@@ -920,6 +920,8 @@ function renderReminderCard() {
   $('#remTest').onclick = async () => { if (reminders.permission === 'default') await Notification.requestPermission(); reminders.test(); };
 }
 
+window.__tigerpath = { map }; // for the browser smoke test
+
 (async function boot() {
   const theme = store.get('theme', null); if (theme) document.documentElement.dataset.theme = theme;
   await loadBasemapMeta();

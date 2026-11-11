@@ -1,6 +1,7 @@
 // "Me" tab: account, daily goals, activity tracking and history.
 
 import { goalProgress, streak, lastDays, dayKey, METERS_PER_MILE } from '../lib/activity.js';
+import { BADGES, weeklyChallenges, weekStats, challengeProgress, weekKey } from '../lib/challenges.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmtInt = (n) => Math.round(n).toLocaleString();
@@ -116,6 +117,20 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
     </details>`;
   }
 
+  function achievements() {
+    const d = acc.data;
+    const ch = challengeProgress(weeklyChallenges(weekKey(), d.goals), weekStats(d));
+    const earned = BADGES.filter((b) => d.badges?.[b.id]);
+    const visited = Object.keys(d.visits ?? {}).length;
+    return `<h3 class="h">This week's challenges</h3>
+      <ul class="pulse-list ch">${ch.map((c) => `<li><span>${c.icon} ${esc(c.title)}</span>${c.done ? '<span class="done">✓</span>' : `<span class="small muted">${Math.floor(c.value * 10) / 10}/${c.target}</span>`}
+        <span class="pbar"><span style="width:${Math.round(c.pct * 100)}%"></span></span></li>`).join('')}</ul>
+      <p class="hint">New challenges every Monday. Buildings count as visited when you're there with location on — ${visited} of ${buildings.length} so far.</p>
+      <h3 class="h">Badges · ${earned.length} of ${BADGES.length}</h3>
+      <ul class="badges">${BADGES.map((b) => { const on = d.badges?.[b.id];
+        return `<li class="${on ? 'on' : ''}" title="${esc(b.desc)}"><span class="bicon" aria-hidden="true">${on ? b.icon : '🔒'}</span><b>${esc(b.title)}</b><span>${esc(b.desc)}</span></li>`; }).join('')}</ul>`;
+  }
+
   function bindPrefs() {
     const set = (key, value) => { acc.update((d) => { d.settings[key] = value; }); onPrefs(key); };
     el.querySelectorAll('.seg[data-pref]').forEach((g) => { g.onclick = (e) => {
@@ -171,6 +186,8 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
 
       <h3 class="h">Last 7 days</h3>
       ${weekChart(lastDays(activity, 7), goals.steps)}
+
+      ${achievements()}
 
       ${preferences()}
 

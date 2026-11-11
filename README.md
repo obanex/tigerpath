@@ -9,6 +9,9 @@ A campus map and wayfinding app for Towson University.
 | Welcome screen | Sign in or create an account when the app opens, or continue as a guest |
 | My account | Activity, goals and **preferences**: preferred route, always avoid stairs, best-lit after dark, walking pace (incl. wheelchair), units, home building, theme |
 | Route choices | Every trip shows the options side by side (fastest, another way, step-free, best lit) with time, distance and stairs; the quickest is marked, tap any to follow it |
+| Campus Pulse | The Explore tab opens with your next class and a leave-by time, live weather with walking advice (icy → step-free routes), food open now, today's steps and this week's challenges |
+| Challenges & badges | Three new challenges every Monday plus 16 badges for steps, streaks and exploring campus; buildings count as visited when you're there with location on |
+| Walk With Me | Share a walk with a friend; if you're 5+ minutes late it asks "Are you OK?", and no answer brings up TU Police, 911 and text-a-friend buttons. Your friend follows along from a link |
 | Walking directions | Turn-by-turn steps with walking time and arrival time |
 | Accessible routing | Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; slower pace for time estimates |
 | Well-lit night routing | Prefers lit paths and paths near emergency phones |
@@ -104,6 +107,23 @@ editor (`?edit=1` → Accessibility tools: click the map, add a note, then **Dow
 building's center. This is best done with Accessibility & Disability Services and checked in person, using TU's
 [official accessibility map](https://www.towson.edu/maps/documents/campus-map_accessibility.pdf) as a guide.
 
+## Walk With Me — how it works
+
+- The walker taps **🛡️ Walk With Me** on any route and shares a link (text, share sheet). The friend opens it and sees
+  the planned route and expected arrival time.
+- **Live location for the friend needs cloud accounts** (Supabase, see Accounts above): walker and friend exchange
+  updates over Supabase Realtime. Without it the friend sees the plan, and the walker's own safety timer still works.
+- 5 minutes past the expected arrival the walker's phone asks "Are you OK?". No answer within 60 seconds shows
+  **Call TU Police (410-704-4444)**, **Call 911**, **Text a friend my location** and **SafeWalk escort (410-704-7233)**.
+  With cloud accounts the friend's screen also turns red. Web apps can't place calls or send texts by themselves, so
+  every emergency action is one tap by a person.
+- Numbers come from towson.edu/public-safety/police. Re-check them each year.
+
+## Weather
+
+Campus Pulse shows current conditions from [Open-Meteo](https://open-meteo.com) (free for non-commercial use, no key),
+cached on each phone for 20 minutes.
+
 ## Project layout
 
 ```
@@ -118,11 +138,18 @@ src/
   lib/osm.js          OpenStreetMap → routing graph (+ ramps, curbs, surfaces)
   lib/activity.js     GPS distance filter, step detector, goals, streaks
   lib/reminders.js    when to remind for each class
+  lib/challenges.js   weekly challenges, badges, building visits
+  lib/walkwithme.js   Walk With Me safety timer + friend view logic
+  lib/weather.js      Open-Meteo weather + walking advice
+  lib/sun.js          sunrise/sunset (best-lit routes after dark)
+  lib/alternatives.js multiple route options
   lib/account.js      accounts: on-device or Supabase
   ui/editor.js        ?edit=1 data editor (pins + accessibility)
   ui/me.js            Me tab (account, goals, tracking, chart)
   ui/tracker.js       walk tracking (GPS + motion sensor + wake lock)
   ui/notify.js        class reminder notifications
+  ui/pulse.js         Campus Pulse
+  ui/walk.js          Walk With Me screens
   config.js           Supabase settings (optional)
 supabase/schema.sql   cloud accounts table + security rules
   main.js             app UI (Leaflet map, panels, URL state)

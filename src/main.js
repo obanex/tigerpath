@@ -10,6 +10,7 @@ import { createIndex, search } from './lib/search.js';
 import { openStatus, weekTable, DAYS, DAY_LABELS, formatTime } from './lib/hours.js';
 import { planDay, toICS, WEEKDAYS } from './lib/schedule.js';
 import { distance, formatDistance, formatMinutes } from './lib/geo.js';
+import { dayKey } from './lib/activity.js';
 import { initEditor, applyPinOverrides } from './ui/editor.js';
 import { AccountService, LocalBackend, SupabaseBackend } from './lib/account.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
@@ -18,6 +19,11 @@ import { createReminders } from './ui/notify.js';
 import { createMeView } from './ui/me.js';
 import { routeOptions } from './lib/alternatives.js';
 import { isDarkOutside } from './lib/sun.js';
+import { renderPulse } from './ui/pulse.js';
+import { getWeather, weatherAdvice } from './lib/weather.js';
+import { createWalkWithMe, createWatchView } from './ui/walk.js';
+import { parseWatch } from './lib/walkwithme.js';
+import { recordVisit, newBadges, BADGES, weeklyChallenges, weekStats, challengeProgress, weekKey } from './lib/challenges.js';
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 
 const CENTER = [39.3925, -76.6110];
@@ -487,6 +493,7 @@ function accessCard(b) {
 
 function renderHome() {
   $('#nearestOut').innerHTML = '';
+  renderPulseNow();
   const li = (id) => { const b = byId.get(id); return b ? `<li><span class="code">${esc(b.id)}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}</button></li>` : ''; };
   const home = byId.get(S.settings.home);
   $('#favs').innerHTML = (home ? `<li><span class="code">🏠</span><button class="link" data-b="${esc(home.id)}">${esc(home.name)}<div class="sub muted">Home</div></button>
@@ -567,10 +574,12 @@ const LEGACY_MODE = { standard: 'fastest', accessible: 'stepfree', night: 'lit' 
 
 /** Which option to pick first: the student's preference, best-lit after dark if they asked for that. */
 function preferredKind() {
+  if (stepFreeToday()) return 'stepfree';
   const pref = S.settings.preferredRoute ?? 'fastest';
   if (pref !== 'stepfree' && (S.settings.autoNight ?? true) && isDarkOutside()) return 'lit';
   return pref;
 }
+function stepFreeToday() { try { return sessionStorage.getItem('tigerpath.stepFreeDay') === dayKey(); } catch { return false; } }
 const optionFor = (kind) => S.options?.find((o) => o.kind === kind || o.also.includes(kind));
 
 function drawRoutes() {
@@ -630,7 +639,7 @@ function renderRouteOut() {
     ${S.options.length === 1 ? '<p class="hint">This is the only sensible way here — the other route types follow the same path.</p>' : ''}
     <div class="summary"><span class="big">${formatMinutes(r.minutes)}</span><span class="muted">${formatDistance(r.res.dist, S.units)} · arrive ${arrive}</span></div>
     ${sel.stairs && stepfree ? `<p class="hint">⚠️ Includes stairs (red dashes). The ${esc(stepfree.label.toLowerCase())} option avoids them.</p>` : ''}
-    <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ Stop' : '▶ Start walking'}</button><button class="btn" id="shareRoute">Share route</button><button class="btn" id="printRoute">Print</button></div>
+    <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ Stop' : '▶ Start walking'}</button><button class="btn" id="wwmBtn">🛡️ Walk With Me</button><button class="btn" id="shareRoute">Share</button><button class="btn" id="printRoute">Print</button></div>
     <ol class="steps">${r.steps.map((s, i) => `<li data-step="${i}"><span class="ico">${s.type === 'arrive' ? '★' : s.type === 'depart' ? '●' : /left/.test(s.text) ? '↰' : /right/.test(s.text) ? '↱' : '↑'}</span>
       <span>${esc(s.text)}</span><span class="d">${s.dist ? formatDistance(s.dist, S.units) : ''}</span></li>`).join('')}</ol>
     ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : '<p class="hint">Walkway data © OpenStreetMap contributors.</p>'}`;
@@ -639,6 +648,7 @@ function renderRouteOut() {
   $('#shareRoute').onclick = () => share(location.href, `Walk to ${r.b.label}`);
   $('#printRoute').onclick = () => window.print();
   $('#liveBtn').onclick = toggleLive;
+  $('#wwmBtn').onclick = () => wwm?.open();
 }
 
 // Live walking: follow the user, show remaining time, reroute when off course.
@@ -668,6 +678,8 @@ function startWatch() {
   S.watchId = navigator.geolocation.watchPosition((pos) => {
     const first = !S.me;
     S.me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+    detectVisit(S.me);
+    wwm?.position(S.me);
     if (!meMarker) {
       meMarker = L.marker([S.me.lat, S.me.lng], { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18] }), interactive: false, keyboard: false }).addTo(layers.me);
       meCircle = L.circle([S.me.lat, S.me.lng], { radius: S.me.acc, weight: 1, color: '#2563eb', fillOpacity: 0.08, interactive: false }).addTo(layers.me);
@@ -844,6 +856,8 @@ function readHash() {
   applyingHash = true;
   const p = new URLSearchParams(location.hash.slice(1));
   try {
+    const watch = parseWatch(p);
+    if (watch) { startWatching(watch); showTab('explore'); return; }
     if (p.has('from') || p.has('to')) {
       const k = p.get('route') ?? LEGACY_MODE[p.get('mode')];
       if (k) S.requestedKind = k;
@@ -883,6 +897,7 @@ async function loadOsm() {
     const overrides = store.get('pins', {});
     for (const [id, o] of matches) {
       o.ourId = id;
+      outlines.set(id, o.outline);
       if (!overrides[id]) { const b = byId.get(id); b.lat = o.lat; b.lng = o.lng; } // real footprint beats seed pin
     }
     safety.push(...data.safety);
@@ -890,7 +905,95 @@ async function loadOsm() {
 }
 
 // ---------------------------------------------------------------- accounts, activity, reminders
-let meView, tracker, reminders;
+let meView, tracker, reminders, wwm;
+
+// ---------------------------------------------------------------- Campus Pulse
+function nextClassWalk(cls) {
+  const b = byId.get(cls.building); if (!b) return null;
+  if (S.me) { // from where you are, if you're on campus
+    const r = computeRoute({ type: 'me' }, { type: 'building', id: b.id }, 'standard');
+    if (r?.res) return { minutes: r.minutes, fromLabel: 'your location', from: { type: 'me' } };
+  }
+  const today = DAYS[new Date().getDay()];
+  const prev = S.schedule.filter((c) => c.id !== cls.id && c.days.includes(today) && c.end <= cls.start).sort((a, c) => c.end.localeCompare(a.end))[0];
+  const origin = prev?.building ?? S.settings.home;
+  if (!origin || origin === cls.building || !byId.has(origin)) return null;
+  const m = walkMinutes(origin, cls.building);
+  return m == null ? null : { minutes: m, fromLabel: byId.get(origin).name, from: { type: 'building', id: origin } };
+}
+function renderPulseNow() {
+  const el = $('#pulse'); if (!el || !acc.backend) return;
+  renderPulse(el, {
+    acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk,
+    actions: {
+      directionsTo: (cls) => { const w = nextClassWalk(cls); setPlace('from', w?.from ?? (S.me ? { type: 'me' } : null)); setPlace('to', { type: 'building', id: cls.building }); showTab('directions'); },
+      addClasses: () => { showTab('schedule'); $('#addClass').open = true; },
+      signIn: () => meView.showWelcome(),
+      walkWithMe: () => { showTab('directions'); if (!S.to) { toast('Choose where you’re walking to, then tap 🛡️ Walk With Me'); $('#to').focus(); } else wwm.open(); },
+      stepFreeToday: () => { try { sessionStorage.setItem('tigerpath.stepFreeDay', dayKey()); } catch { /* ignore */ } toast('Step-free routes will be picked first today'); renderPulseNow(); if (S.from && S.to) updateRoute({ fit: false }); },
+      openAccount: () => showTab('account'),
+    },
+  });
+}
+async function loadWeather() {
+  try { S.weather = await getWeather(); if (!S.selected) renderPulseNow(); } catch { /* offline or blocked: Pulse just skips weather */ }
+}
+
+// ---------------------------------------------------------------- visits, badges, challenges
+const outlines = new Map(); // building id -> OSM footprint
+function insidePoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i], [yj, xj] = poly[j];
+    if ((yi > p.lat) !== (yj > p.lat) && p.lng < ((xj - xi) * (p.lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function detectVisit(p) {
+  if (!p || p.acc > 50) return;
+  const today = dayKey();
+  for (const b of S.buildings) {
+    if (acc.data.visits?.[b.id]?.last === today) continue;
+    const poly = outlines.get(b.id);
+    const here = poly ? insidePoly(p, poly) || distance(p, b) < 20 : distance(p, b) < 35;
+    if (!here) continue;
+    let first = false;
+    acc.update((d) => { first = recordVisit(d, b.id); });
+    if (first && acc.user) toast(`📍 New place discovered: ${b.name} (${Object.keys(acc.data.visits).length} of ${S.buildings.length})`, 3500);
+  }
+}
+let achievementsBusy = false;
+function checkAchievements() {
+  if (!acc.user || achievementsBusy) return;
+  achievementsBusy = true;
+  try {
+    const wk = weekKey();
+    const done = challengeProgress(weeklyChallenges(wk, acc.data.goals), weekStats(acc.data)).filter((c) => c.done).map((c) => c.id);
+    const logged = acc.data.challengeLog?.[wk] ?? [];
+    const newDone = done.filter((id) => !logged.includes(id));
+    if (newDone.length) {
+      acc.update((d) => { d.challengeLog = { ...d.challengeLog, [wk]: [...logged, ...newDone] }; });
+      const titles = weeklyChallenges(wk, acc.data.goals).filter((c) => newDone.includes(c.id)).map((c) => c.title);
+      toast(`✅ Challenge complete: ${titles.join(', ')}`, 4000);
+    }
+    const earned = newBadges(acc.data, S.buildings);
+    if (earned.length) {
+      acc.update((d) => { d.badges = { ...d.badges, ...Object.fromEntries(earned.map((id) => [id, dayKey()])) }; });
+      const b = BADGES.find((x) => x.id === earned.at(-1));
+      setTimeout(() => toast(`🏅 Badge unlocked: ${b.title} — ${b.desc}${earned.length > 1 ? ` (+${earned.length - 1} more)` : ''}`, 4500), newDone.length ? 4200 : 0);
+    }
+  } finally { achievementsBusy = false; }
+}
+
+// ---------------------------------------------------------------- Walk With Me (friend's view)
+function startWatching(w) {
+  const from = decPlace(w.from), to = decPlace(w.to);
+  const r = from && to ? computeRoute(from, to, 'standard') : null;
+  createWatchView({
+    map, watch: w, routeLatLngs: r?.latlngs, fromLabel: from?.type === 'point' ? `${w.name}'s starting point` : placeLabel(from) || 'their start', toLabel: placeLabel(to) || 'their destination',
+    supabaseClient: acc.backend?.kind === 'cloud' ? acc.backend.c : null,
+  });
+}
 async function initAccounts() {
   if (SUPABASE_URL && SUPABASE_ANON_KEY) {
     const { createClient } = await import('@supabase/supabase-js');
@@ -905,12 +1008,22 @@ async function initAccounts() {
       if ('Notification' in window && Notification.permission === 'granted') navigator.serviceWorker?.getRegistration().then((r) => r?.showNotification('Goal reached 🎉', { body: 'You hit your TigerPath goal for today.', icon: 'icon.svg', tag: 'goal' }));
     },
   });
+  wwm = createWalkWithMe({
+    acc, toast,
+    getRoute: () => S.lastRoute && { ...S.lastRoute, fromCode: S.from?.type === 'me' && S.me ? `${S.me.lat.toFixed(6)},${S.me.lng.toFixed(6)}` : encPlace(S.from), toCode: encPlace(S.to) },
+    getMe: () => S.me,
+    ensureLive: () => { if (!S.live) toggleLive(); },
+    stopLive: () => { if (S.live) toggleLive(); },
+    supabaseClient: acc.backend.kind === 'cloud' ? acc.backend.c : null,
+    onArrived: () => checkAchievements(),
+  });
   meView = createMeView({ el: $('#meOut'), welcomeEl: $('#welcome'), acc, tracker, toast, buildings: S.buildings, onPrefs });
   reminders = createReminders({
     acc, walkMinutes, buildingName: (id) => byId.get(id)?.name ?? id,
     onFire: (r, { title, body, url }) => showBanner(title, body, url),
   });
   acc.onChange(() => {
+    checkAchievements();
     walkCache.clear();
     if (S.tab === 'account') meView.render();
     if (S.tab === 'schedule') renderSchedule();
@@ -986,5 +1099,7 @@ window.__tigerpath = { map }; // for the browser smoke test
   if (EDIT) initEditor({ map, buildings: S.buildings, markers, onMove: () => { buildGraph(); walkCache.clear(); if (S.lastRoute) updateRoute({ fit: false }); },
     access: localAccess, onAccessChange: () => { drawAccess(); renderAccessLegend(); } });
   addEventListener('pagehide', () => acc.flush());
+  loadWeather(); setInterval(loadWeather, 20 * 60 * 1000);
+  checkAchievements();
   if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
 })();

@@ -23,8 +23,11 @@ for (const t of targets.filter((t) => !only || t.name.includes(only))) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
-  page.on('requestfailed', (r) => errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`));
+  // Outside services (weather) may be down or blocked; the app copes, so only our own files count as failures.
+  const ours = (u) => u.startsWith(new URL(URL).origin);
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`console: ${m.text()}`); });
+  page.on('requestfailed', (r) => { if (ours(r.url())) errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`); });
+  page.on('response', (r) => { if (ours(r.url()) && r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`); });
   const report = { target: t.name, steps: {} };
   const snapshot = async (label) => {
     await page.waitForTimeout(2500);
@@ -58,7 +61,7 @@ for (const t of targets.filter((t) => !only || t.name.includes(only))) {
   } catch (e) { errors.push(`test: ${e.message.split('\n')[0]}`); }
   report.errors = errors;
   const s = report.steps;
-  const ok = errors.filter((e) => !e.startsWith('requestfailed')).length === 0 && s.load?.pinsInView > 0 && s.load?.canvasesWithPixels > 0 && s.academic?.pinsInView > 0;
+  const ok = errors.length === 0 && s.load?.pinsInView > 0 && s.load?.canvasesWithPixels > 0 && s.academic?.pinsInView > 0;
   report.ok = ok; failed ||= !ok;
   console.log(JSON.stringify(report, null, 2));
   await browser.close();

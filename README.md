@@ -69,7 +69,11 @@ settings follow the account. Anything they did before signing up comes with them
 
 - **On-device (default):** works with no server. Passwords are salted and hashed (PBKDF2) and never leave the phone,
   but the account only exists on that device.
-- **Cloud (recommended for launch):** real accounts that sync across devices.
+- **Cloud (live now):** TigerPath is connected to the Supabase project `tigerpath` (`src/config.js`), so accounts sync
+  across devices and Walk With Me friends see live location. Email confirmation is **on**, and Supabase's built-in
+  mailer only sends about 2 emails per hour — before a wide launch, either connect a real email service
+  (Authentication → Emails → SMTP) or turn confirmation off (Authentication → Sign In / Providers → Email →
+  "Confirm email"). To set up a different project yourself:
   1. Create a free project at [supabase.com](https://supabase.com).
   2. In its SQL editor, run `supabase/schema.sql`. Row-level security means each student can only read their own data.
   3. Put the project URL and **anon public** key in `src/config.js` (Project Settings → API) and push.

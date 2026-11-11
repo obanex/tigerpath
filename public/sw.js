@@ -1,8 +1,8 @@
 // TigerPath service worker: app shell works offline, map tiles you've viewed are cached.
-const APP = 'tigerpath-app-v2';
-const TILES = 'tigerpath-tiles-v1';
+const APP = 'tigerpath-app-v3';
+const TILES = 'tigerpath-tiles-v2'; // v2: drop cached CARTO tiles
 const MAX_TILES = 1500;
-const TILE_HOSTS = /(basemaps\.cartocdn\.com|tile\.openstreetmap\.org|server\.arcgisonline\.com)$/;
+const TILE_HOSTS = /(tile\.openstreetmap\.org|server\.arcgisonline\.com)$/;
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(APP).then((c) => c.addAll(['./', './index.html']))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

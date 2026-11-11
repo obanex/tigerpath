@@ -150,6 +150,9 @@ table.hours td { padding: 3px 0; } table.hours tr.today { font-weight: 700; }
 .endmark { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 2px rgb(0 0 0 / .5)); }
 .me-dot { width: 18px; height: 18px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 6px rgb(37 99 235 / .25); }
 .leaflet-container { font: inherit; }
+/* dark mode: darken the street map tiles (no free keyless dark tile set exists) */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .street-tiles { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9) saturate(.6); } }
+:root[data-theme="dark"] .street-tiles { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9) saturate(.6); }
 .leaflet-bar a { background: var(--bg); color: var(--fg); border-color: var(--line) !important; }
 .leaflet-bar a:hover { background: var(--bg2); }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--bg); color: var(--fg); }

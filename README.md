@@ -139,4 +139,4 @@ Temporary closures go in `CLOSURES` in `src/data/places.js` with an `until` date
 - **Accessibility reports**: users flag a broken elevator or a blocked ramp, and accessible routing avoids it right away.
 - **Study-space occupancy** from library/Union capacity counters.
 
-Map tiles: © OpenStreetMap contributors, © CARTO, imagery © Esri. Not an official Towson University product.
+Map tiles: © OpenStreetMap contributors, imagery © Esri. The street map uses OpenStreetMap's free tile server, which is fine for a campus project; if TigerPath gets heavy traffic, switch to a hosted provider such as MapTiler or Stadia Maps (free tiers, API key needed) in `TILE` in `src/main.js`. Not an official Towson University product.

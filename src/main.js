@@ -36,7 +36,7 @@ const S = {
   me: null, live: false, watchId: null,
   category: null,
   layers: { buildings: true, labels: true, parking: true, shuttle: false, safety: true, outlines: true, access: false, ...store.get('layers', {}) },
-  permit: '', basemap: store.get('basemap', 'auto'),
+  permit: '', basemap: store.get('basemap', 'map'),
   pace: store.get('pace', 1.34), units: store.get('units', 'imperial'),
   day: WEEKDAYS.includes(DAYS[new Date().getDay()]) ? DAYS[new Date().getDay()] : 'mon',
 };
@@ -58,11 +58,12 @@ const map = L.map('map', { zoomControl: false, maxZoom: 20, minZoom: 14 }).setVi
 L.control.zoom({ position: 'topright' }).addTo(map);
 L.control.scale({ position: 'bottomright', imperial: true, metric: true }).addTo(map);
 
+// Street map: OpenStreetMap's standard tiles (free, no API key; dark mode darkens them with a CSS filter).
+// For heavy traffic, switch to a hosted tile provider (see README).
+const OSM_ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const TILE = {
-  light: ['https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>'],
-  dark: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>'],
-  osm: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'],
-  satellite: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 'Imagery © Esri, Maxar, Earthstar Geographics'],
+  map: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', OSM_ATTR, 19],
+  satellite: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 'Imagery © Esri, Maxar, Earthstar Geographics', 19],
 };
 let baseLayer;
 function isDark() {
@@ -70,12 +71,12 @@ function isDark() {
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
 }
 function setBasemap(kind = S.basemap) {
+  if (!TILE[kind]) kind = 'map'; // older saved choices ('auto', 'osm') → street map
   S.basemap = kind; store.set('basemap', kind);
-  const key = kind === 'auto' ? (isDark() ? 'dark' : 'light') : kind;
   if (baseLayer) map.removeLayer(baseLayer);
-  const [url, attribution] = TILE[key];
-  baseLayer = L.tileLayer(url, { attribution, subdomains: 'abcd', maxZoom: 20, maxNativeZoom: key === 'osm' ? 19 : 20, detectRetina: true }).addTo(map);
-  renderSeg('#basemaps', [['auto', 'Map'], ['satellite', 'Satellite'], ['osm', 'OSM']], S.basemap, setBasemap);
+  const [url, attribution, maxNativeZoom] = TILE[kind];
+  baseLayer = L.tileLayer(url, { attribution, maxZoom: 20, maxNativeZoom, className: kind === 'map' ? 'street-tiles' : '' }).addTo(map);
+  renderSeg('#basemaps', [['map', 'Map'], ['satellite', 'Satellite']], S.basemap, setBasemap);
 }
 
 const layers = {
@@ -753,10 +754,8 @@ function renderAccessLegend() {
 function applyTheme(t) {
   if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
   store.set('theme', t ?? null);
-  if (S.basemap === 'auto') setBasemap('auto');
 }
 $('#themeBtn').onclick = () => applyTheme(isDark() ? 'light' : 'dark');
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S.basemap === 'auto' && setBasemap('auto'));
 
 // ---------------------------------------------------------------- URL state
 function encPlace(p) { return !p ? '' : p.type === 'me' ? 'me' : p.type === 'building' ? p.id : p.type === 'parking' ? 'park:' + p.id : `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`; }

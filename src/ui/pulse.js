@@ -81,6 +81,19 @@ export function renderPulse(el, ctx) {
       <div class="btn-row"><button class="btn small" data-act="signin">Sign in</button></div></div>`);
   }
 
+  // --- Hall Cup
+  if (ctx.hallBoard) {
+    const rows = ctx.hallBoard.rows ?? [];
+    const top = rows.filter((r) => r.rank).slice(0, 3);
+    const mine = rows.find((r) => r.mine);
+    const medal = ['🥇', '🥈', '🥉'];
+    parts.push(`<div class="pulse-card"><span class="pc-label">🏆 Hall Cup · this week</span>
+      ${top.length ? `<ul class="pulse-list">${top.map((r, i) => `<li><span>${medal[i]} ${esc(r.name)}${r.mine ? ' <span class="rbadge q">You</span>' : ''}</span><span class="small muted">${r.avg.toLocaleString()} avg</span></li>`).join('')}</ul>`
+        : '<span class="small">No hall has 3 walkers yet this week — rally your floor!</span>'}
+      ${mine && !top.includes(mine) ? `<span class="small">${esc(mine.name)}: ${mine.rank ? `#${mine.rank}` : `needs ${mine.needs} more walker${mine.needs > 1 ? 's' : ''}`}</span>` : ''}
+      ${!acc.data.settings.hall || acc.data.settings.hallCup === false ? `<button class="link-btn" data-act="${acc.user ? 'account' : 'signin'}">${acc.user ? 'Pick your hall to compete →' : 'Sign in to compete for your hall →'}</button>` : ''}</div>`);
+  }
+
   // --- Walk With Me
   parts.push(`<div class="pulse-card wwm${dark ? ' dark' : ''}"><span class="pc-label">🛡️ Walk With Me</span>
     <span class="small">${dark ? "It's dark out. Share your walk with a friend — we'll check in if you're running late." : 'Share any walk with a friend, with a safety check-in if you\'re running late.'}</span>

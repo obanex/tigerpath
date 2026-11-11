@@ -113,8 +113,20 @@ export class SupabaseBackend {
     const { error } = await this.c.from('user_data').upsert({ id: user.id, data: d, updated_at: new Date().toISOString() });
     if (error) throw new Error(error.message);
   }
+  /** Hall Cup: this student's steps for a week (only hall + steps are shared, as an anonymous hall total). */
+  async submitWeek(user, { week, hall, steps }) {
+    const { error } = await this.c.from('weekly_steps').upsert({ user_id: user.id, week, hall, steps: Math.max(0, Math.min(250000, Math.round(steps))), updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+  }
+  async withdrawWeek(user, week) { await this.c.from('weekly_steps').delete().eq('user_id', user.id).eq('week', week); }
+  async leaderboard(week) {
+    const { data, error } = await this.c.rpc('hall_leaderboard', { p_week: week });
+    if (error) throw new Error(error.message);
+    return data;
+  }
   async deleteAccount(user) {
     // Deletes the student's data. Removing the login itself needs the service key (Supabase dashboard).
+    await this.c.from('weekly_steps').delete().eq('user_id', user.id);
     await this.c.from('user_data').delete().eq('id', user.id);
     await this.signOut();
   }

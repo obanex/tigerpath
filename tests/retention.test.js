@@ -90,3 +90,30 @@ test('Walk With Me: arrival, check-in, alert, ok, friend view', () => {
   assert.deepEqual(back, { id: 'abc', name: 'Sam T', from: 'CK', to: 'GT', eta: t0 });
   assert.equal(TUPD.emergency.tel, '410-704-4444');
 });
+
+test('Hall Cup ranking: by average, 3+ walkers, mine flagged', async () => {
+  const { rankRows, teamOptions } = await import('../src/lib/leaderboard.js');
+  const rows = [
+    { hall: 'GT', walkers: 12, total_steps: '480000', avg_steps: 40000 },
+    { hall: 'WV1', walkers: 4, total_steps: '200000', avg_steps: 50000 },
+    { hall: 'RT', walkers: 2, total_steps: null, avg_steps: null },
+    { hall: 'COMMUTE', walkers: 30, total_steps: '900000', avg_steps: 30000 },
+  ];
+  const ranked = rankRows(rows.sort((a, b) => (b.avg_steps ?? -1) - (a.avg_steps ?? -1)), { names: { GT: 'Glen Towers' }, mine: 'GT' });
+  assert.deepEqual(ranked.map((r) => [r.hall, r.rank, r.needs]), [['WV1', 1, 0], ['GT', 2, 0], ['COMMUTE', 3, 0], ['RT', null, 1]]);
+  assert.equal(ranked[1].name, 'Glen Towers'); assert.equal(ranked[1].mine, true);
+  const teams = teamOptions(BUILDINGS);
+  assert.equal(teams.at(-1).id, 'COMMUTE');
+  assert.ok(teams.every((t) => t.id === 'COMMUTE' || BUILDINGS.find((b) => b.id === t.id).category === 'residence'));
+});
+
+test('cloud backend: Hall Cup submit and leaderboard (mock client)', async () => {
+  const { SupabaseBackend } = await import('../src/lib/account.js');
+  const calls = [];
+  const client = { from: (t) => ({ upsert: async (row) => { calls.push([t, row]); return { error: null }; } }), rpc: async (fn, args) => { calls.push([fn, args]); return { data: [{ hall: 'GT', walkers: 3, total_steps: 9, avg_steps: 3 }], error: null }; } };
+  const be = new SupabaseBackend(client);
+  await be.submitWeek({ id: 'u1' }, { week: '2026-W46', hall: 'GT', steps: 999999.6 });
+  assert.deepEqual(calls[0][0], 'weekly_steps'); assert.equal(calls[0][1].steps, 250000); assert.equal(calls[0][1].user_id, 'u1');
+  assert.equal((await be.leaderboard('2026-W46'))[0].hall, 'GT');
+  assert.deepEqual(calls[1], ['hall_leaderboard', { p_week: '2026-W46' }]);
+});

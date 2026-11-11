@@ -11,6 +11,7 @@ A campus map and wayfinding app for Towson University.
 | Route choices | Every trip shows the options side by side (fastest, another way, step-free, best lit) with time, distance and stairs; the quickest is marked, tap any to follow it |
 | Campus Pulse | The Explore tab opens with your next class and a leave-by time, live weather with walking advice (icy → step-free routes), food open now, today's steps and this week's challenges |
 | Challenges & badges | Three new challenges every Monday plus 16 badges for steps, streaks and exploring campus; buildings count as visited when you're there with location on |
+| Hall Cup | Weekly step leaderboard between residence halls (plus Commuters), ranked by average steps per walker; shown in Campus Pulse and My account |
 | Walk With Me | Share a walk with a friend; if you're 5+ minutes late it asks "Are you OK?", and no answer brings up TU Police, 911 and text-a-friend buttons. Your friend follows along from a link |
 | Walking directions | Turn-by-turn steps with walking time and arrival time |
 | Accessible routing | Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; slower pace for time estimates |
@@ -123,6 +124,15 @@ building's center. This is best done with Accessibility & Disability Services an
   every emergency action is one tap by a person.
 - Numbers come from towson.edu/public-safety/police. Re-check them each year.
 
+## Hall Cup — privacy and fairness
+
+- Students pick their team (residence hall or Commuters) in **My account → Hall Cup**; leaving it removes their entry.
+- The only thing shared is the student's **weekly step total and team** (`weekly_steps` table). Row-level security means
+  nobody can read anyone else's row; the leaderboard comes from `hall_leaderboard()`, which returns hall totals only.
+- Halls need **3+ walkers** to be ranked, so no one's own count can be worked out; ranking is by **average steps per
+  walker** so big halls don't win on size; weekly totals are capped at 250,000 steps.
+- Database setup: `supabase/schema.sql` then `supabase/leaderboard.sql` (both already applied to the live project).
+
 ## Weather
 
 Campus Pulse shows current conditions from [Open-Meteo](https://open-meteo.com) (free for non-commercial use, no key),
@@ -143,6 +153,7 @@ src/
   lib/activity.js     GPS distance filter, step detector, goals, streaks
   lib/reminders.js    when to remind for each class
   lib/challenges.js   weekly challenges, badges, building visits
+  lib/leaderboard.js  Hall Cup teams and ranking
   lib/walkwithme.js   Walk With Me safety timer + friend view logic
   lib/weather.js      Open-Meteo weather + walking advice
   lib/sun.js          sunrise/sunset (best-lit routes after dark)

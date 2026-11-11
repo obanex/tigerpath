@@ -53,7 +53,7 @@ const seg = (name, options, value) => `<div class="seg" role="radiogroup" data-p
  * el: account view container · welcomeEl: welcome overlay · buildings: for the "home" picker
  * onPrefs(key): called after a preference changes so the app can apply it
  */
-export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {} }) {
+export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {}, hallCup = null }) {
   let mode = 'signup';
 
   /** Sign-up / sign-in form, used on the welcome screen. */
@@ -115,6 +115,23 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
         <span class="hint">Adds a one-tap “Directions home” button.</span></div>
       <div class="field"><span class="label">Theme</span>${seg('theme', THEMES, st.theme ?? 'system')}</div>
     </details>`;
+  }
+
+  function hallCupSection() {
+    if (!hallCup) return '';
+    const st = acc.data.settings, board = hallCup.board();
+    const mine = st.hallCup === false ? null : st.hall;
+    const select = `<div class="field"><label for="pHall">Your team</label><select id="pHall" data-pref="hall">
+      <option value="">Not competing</option>${hallCup.teams.map((t) => `<option value="${esc(t.id)}" ${st.hall === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>`;
+    if (!hallCup.cloud) return `<h3 class="h">🏆 Hall Cup</h3><p class="hint">The Hall Cup needs cloud accounts.</p>`;
+    const rows = board?.rows ?? [];
+    return `<h3 class="h">🏆 Hall Cup · this week</h3>
+      ${select}
+      ${rows.length ? `<table class="board"><thead><tr><th>#</th><th>Team</th><th>Avg steps</th><th>Walkers</th></tr></thead><tbody>
+        ${rows.map((r) => `<tr class="${r.mine ? 'mine' : ''}"><td>${r.rank ?? '–'}</td><td>${esc(r.name)}${r.mine ? ' <span class="rbadge q">You</span>' : ''}</td>
+          <td>${r.avg != null ? r.avg.toLocaleString() : `<span class="muted small">needs ${r.needs} more</span>`}</td><td>${r.walkers}</td></tr>`).join('')}</tbody></table>`
+        : `<p class="hint">${board?.error ? 'Couldn’t load the Hall Cup right now.' : 'No steps logged this week yet — be the first for your hall!'}</p>`}
+      <p class="hint">Halls are ranked by average steps per walker and need 3+ walkers to be ranked. Only your hall and weekly step count are shared, as part of a hall total — never your name or where you walked.${mine ? '' : ' Pick a team to join.'}</p>`;
   }
 
   function achievements() {
@@ -186,6 +203,8 @@ export function createMeView({ el, welcomeEl, acc, tracker, toast, buildings, on
 
       <h3 class="h">Last 7 days</h3>
       ${weekChart(lastDays(activity, 7), goals.steps)}
+
+      ${hallCupSection()}
 
       ${achievements()}
 

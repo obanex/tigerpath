@@ -24,6 +24,7 @@ import { getWeather, weatherAdvice } from './lib/weather.js';
 import { createWalkWithMe, createWatchView } from './ui/walk.js';
 import { parseWatch } from './lib/walkwithme.js';
 import { recordVisit, newBadges, BADGES, weeklyChallenges, weekStats, challengeProgress, weekKey } from './lib/challenges.js';
+import { teamOptions, rankRows } from './lib/leaderboard.js';
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 
 const CENTER = [39.3925, -76.6110];
@@ -339,6 +340,7 @@ function showTab(name) {
   S.tab = name;
   if (name === 'schedule') renderSchedule();
   if (name === 'account') { meView?.render(); sheet('full'); }
+  if (name === 'explore' && !S.selected) renderPulseNow(); // fresh next-class times and Hall Cup
   if (name !== 'directions' && name !== 'schedule') layers.route.clearLayers();
   if (name === 'directions' && S.options) drawRoutes();
   writeHash();
@@ -924,7 +926,7 @@ function nextClassWalk(cls) {
 function renderPulseNow() {
   const el = $('#pulse'); if (!el || !acc.backend) return;
   renderPulse(el, {
-    acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk,
+    acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk, hallBoard: hallBoard(),
     actions: {
       directionsTo: (cls) => { const w = nextClassWalk(cls); setPlace('from', w?.from ?? (S.me ? { type: 'me' } : null)); setPlace('to', { type: 'building', id: cls.building }); showTab('directions'); },
       addClasses: () => { showTab('schedule'); $('#addClass').open = true; },
@@ -985,6 +987,43 @@ function checkAchievements() {
   } finally { achievementsBusy = false; }
 }
 
+// ---------------------------------------------------------------- Hall Cup
+const TEAMS = teamOptions(S.buildings);
+const TEAM_NAMES = Object.fromEntries(TEAMS.map((t) => [t.id, t.name]));
+const cloud = () => typeof acc.backend?.leaderboard === 'function';
+/** Ranked rows for this week, with the student's own team flagged (null when not in cloud mode). */
+function hallBoard() {
+  if (!cloud() || !S.hallRaw) return cloud() ? { rows: [] } : null;
+  return { rows: rankRows(S.hallRaw.rows, { names: TEAM_NAMES, mine: S.settings.hallCup === false ? null : S.settings.hall }), error: S.hallRaw.error };
+}
+async function loadHallBoard() {
+  if (!cloud()) return;
+  try { S.hallRaw = { week: weekKey(), rows: await acc.backend.leaderboard(weekKey()) }; }
+  catch (e) { S.hallRaw = { week: weekKey(), rows: S.hallRaw?.rows ?? [], error: e.message }; }
+  if (!S.selected && S.tab !== 'account') renderPulseNow();
+  if (S.tab === 'account') meView.render();
+}
+let hallSent = null, hallTimer = null;
+/** Share this week's step total with the student's hall (debounced). */
+function syncHallCup({ now = false } = {}) {
+  clearTimeout(hallTimer);
+  hallTimer = setTimeout(async () => {
+    if (!acc.user || typeof acc.backend.submitWeek !== 'function') return;
+    const week = weekKey(), hall = S.settings.hall;
+    try {
+      if (!hall || S.settings.hallCup === false) {
+        if (hallSent) { await acc.backend.withdrawWeek(acc.user, week); hallSent = null; loadHallBoard(); }
+        return;
+      }
+      const steps = weekStats(acc.data).weekSteps;
+      const key = `${week}|${hall}|${steps}`;
+      if (steps <= 0 || key === hallSent) return;
+      await acc.backend.submitWeek(acc.user, { week, hall, steps });
+      hallSent = key; loadHallBoard();
+    } catch { /* offline: try again on the next change */ }
+  }, now ? 0 : 15000);
+}
+
 // ---------------------------------------------------------------- Walk With Me (friend's view)
 function startWatching(w) {
   const from = decPlace(w.from), to = decPlace(w.to);
@@ -1017,13 +1056,15 @@ async function initAccounts() {
     supabaseClient: acc.backend.kind === 'cloud' ? acc.backend.c : null,
     onArrived: () => checkAchievements(),
   });
-  meView = createMeView({ el: $('#meOut'), welcomeEl: $('#welcome'), acc, tracker, toast, buildings: S.buildings, onPrefs });
+  meView = createMeView({ el: $('#meOut'), welcomeEl: $('#welcome'), acc, tracker, toast, buildings: S.buildings, onPrefs,
+    hallCup: { teams: TEAMS, board: () => hallBoard(), get cloud() { return cloud(); } } });
   reminders = createReminders({
     acc, walkMinutes, buildingName: (id) => byId.get(id)?.name ?? id,
     onFire: (r, { title, body, url }) => showBanner(title, body, url),
   });
   acc.onChange(() => {
     checkAchievements();
+    syncHallCup();
     walkCache.clear();
     if (S.tab === 'account') meView.render();
     if (S.tab === 'schedule') renderSchedule();
@@ -1043,6 +1084,7 @@ function renderAvatar() {
 function onPrefs(key) {
   if (key === 'theme') applyTheme();
   if (key === 'home') renderHome();
+  if (key === 'hall') { syncHallCup({ now: true }); if (!S.settings.hall) loadHallBoard(); }
   if (['pace', 'avoidStairs', 'strictAccess'].includes(key)) walkCache.clear();
   if (['pace', 'units', 'avoidStairs', 'strictAccess', 'preferredRoute', 'autoNight'].includes(key) && S.from && S.to) updateRoute({ fit: false });
 }
@@ -1100,6 +1142,7 @@ window.__tigerpath = { map }; // for the browser smoke test
     access: localAccess, onAccessChange: () => { drawAccess(); renderAccessLegend(); } });
   addEventListener('pagehide', () => acc.flush());
   loadWeather(); setInterval(loadWeather, 20 * 60 * 1000);
+  loadHallBoard(); setInterval(loadHallBoard, 5 * 60 * 1000); syncHallCup({ now: true });
   checkAchievements();
   if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
 })();

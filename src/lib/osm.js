@@ -41,12 +41,14 @@ const CAMPUS_BUILDING_TYPES = new Set(['university', 'college', 'school', 'dormi
 
 const ROUGH_SURFACES = new Set(['gravel', 'fine_gravel', 'pebblestone', 'grass', 'dirt', 'earth', 'ground', 'sand', 'mud', 'unpaved', 'woodchips', 'wood_chips', 'rock', 'grass_paver']);
 const BAD_SMOOTHNESS = new Set(['bad', 'very_bad', 'horrible', 'very_horrible', 'impassable']);
+const PATH_TYPES = new Set(['footway', 'path', 'pedestrian', 'steps', 'corridor', 'cycleway', 'living_street']);
 const isAutomatic = (t) => (t.automatic_door && t.automatic_door !== 'no') || t.door === 'automatic';
 
 /** Edge flags that matter for accessible / night routing, from an OSM way's tags. */
 export function wayFlags(t) {
   const flags = {};
   if (t.highway === 'steps') flags.stairs = true;
+  if (PATH_TYPES.has(t.highway) || t.footway === 'sidewalk') flags.path = true; // pedestrian infrastructure (vs. roads)
   if (t.lit === 'yes') flags.lit = true; else if (t.lit === 'no') flags.lit = false;
   if (['no', 'yes', 'limited'].includes(t.wheelchair)) flags.wheelchair = t.wheelchair;
   if (t.ramp === 'yes' || t['ramp:wheelchair'] === 'yes') flags.ramp = true;

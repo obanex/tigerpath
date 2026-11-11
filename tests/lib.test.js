@@ -152,8 +152,9 @@ test('directions fold tiny kinks into meaningful steps', () => {
 
 test('OSM accessibility: ramps, kerbs, elevators, entrances, accessible parking', async () => {
   const { wayFlags } = await import('../src/lib/osm.js');
-  assert.deepEqual(wayFlags({ highway: 'footway', ramp: 'yes', surface: 'gravel', incline: '10%' }), { ramp: true, rough: true, steep: true });
-  assert.deepEqual(wayFlags({ highway: 'footway', incline: 'up', wheelchair: 'yes' }), { wheelchair: 'yes', sloped: true });
+  assert.deepEqual(wayFlags({ highway: 'footway', ramp: 'yes', surface: 'gravel', incline: '10%' }), { path: true, ramp: true, rough: true, steep: true });
+  assert.deepEqual(wayFlags({ highway: 'footway', incline: 'up', wheelchair: 'yes' }), { path: true, wheelchair: 'yes', sloped: true });
+  assert.deepEqual(wayFlags({ highway: 'residential', name: 'Osler Drive' }), { name: 'Osler Drive' });
   const data = processOverpass({ elements: [
     { type: 'node', id: 1, lat: 39.390, lon: -76.610 },
     { type: 'node', id: 2, lat: 39.391, lon: -76.610, tags: { kerb: 'raised' } },
@@ -163,8 +164,9 @@ test('OSM accessibility: ramps, kerbs, elevators, entrances, accessible parking'
     { type: 'node', id: 6, lat: 39.3908, lon: -76.6092, tags: { entrance: 'yes' } }, // not on a campus building
     { type: 'node', id: 7, lat: 39.3909, lon: -76.6093, tags: { highway: 'elevator' } },
     { type: 'node', id: 8, lat: 39.3910, lon: -76.6094, tags: { amenity: 'parking_space', parking_space: 'disabled', capacity: '2' } },
-    { type: 'way', id: 10, nodes: [1, 2], tags: { highway: 'footway' } },
-    { type: 'way', id: 11, nodes: [1, 3, 2], tags: { highway: 'footway', ramp: 'yes' } },
+    { type: 'node', id: 9, lat: 39.392, lon: -76.610 },
+    { type: 'way', id: 10, nodes: [1, 2, 9], tags: { highway: 'footway' } },
+    { type: 'way', id: 11, nodes: [1, 3, 9], tags: { highway: 'footway', ramp: 'yes' } },
     { type: 'way', id: 12, nodes: [4, 5, 1, 4], tags: { building: 'university', name: 'Test Hall' } },
   ] });
   assert.equal(data.edges.find(([a, b]) => a === 1 && b === 2)[2].kerb, 'raised');
@@ -173,6 +175,6 @@ test('OSM accessibility: ramps, kerbs, elevators, entrances, accessible parking'
   assert.equal(data.access.elevators.length, 1);
   assert.equal(data.access.parking[0].capacity, 2);
   const g = graphFromProcessed(data);
-  assert.deepEqual(route(g, '1', '2', 'standard').path, ['1', '2']);
-  assert.deepEqual(route(g, '1', '2', 'accessible').path, ['1', '3', '2']); // ramp, not the raised kerb
+  assert.deepEqual(route(g, '1', '9', 'standard').path, ['1', '2', '9']);
+  assert.deepEqual(route(g, '1', '9', 'accessible').path, ['1', '3', '9']); // ramp + curb cut, not the raised kerb
 });

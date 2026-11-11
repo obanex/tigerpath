@@ -38,6 +38,7 @@ const raw = fromIdx > -1 ? JSON.parse(await readFile(process.argv[fromIdx + 1], 
 const data = processOverpass(raw);
 await mkdir(new URL('../public/data/', import.meta.url), { recursive: true });
 await writeFile(new URL('../public/data/osm-campus.json', import.meta.url), JSON.stringify(data));
+if (process.argv.includes('--raw')) await writeFile(new URL('../osm-raw.json', import.meta.url), JSON.stringify(raw));
 console.log(`Saved public/data/osm-campus.json: ${data.nodes.length} path nodes, ${data.edges.length} edges, ` +
   `${data.buildings.length} buildings (${data.buildings.filter((b) => b.name).length} named), ` +
   `${data.safety.length} safety features, ${data.parking.length} parking areas.`);

@@ -8,7 +8,7 @@ import { Graph } from './graph.js';
 import { centroid } from './geo.js';
 
 // Campus bounding box: south, west, north, east (generous margin).
-export const CAMPUS_BBOX = [39.3835, -76.6230, 39.4000, -76.6020];
+export const CAMPUS_BBOX = [39.3800, -76.6270, 39.4030, -76.5990];
 
 export const OVERPASS_QUERY = `
 [out:json][timeout:60];

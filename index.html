@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>TigerNav · Towson University Campus Map</title>
+  <meta name="description" content="Search Towson University buildings, get accessible walking directions, and plan your class schedule." />
+  <meta name="theme-color" content="#111111" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+</head>
+<body>
+  <a class="skip" href="#panel">Skip to panel</a>
+  <div id="map" role="application" aria-label="Campus map"></div>
+
+  <aside id="panel" class="panel" data-sheet="half" aria-label="TigerNav">
+    <button class="sheet-handle" id="sheetHandle" aria-label="Resize panel"><span></span></button>
+    <header class="brand">
+      <div class="logo" aria-hidden="true">TU</div>
+      <div><h1>TigerNav</h1><p>Towson University campus map</p></div>
+      <button class="icon-btn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode">🌓</button>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-explore" aria-controls="view-explore" aria-selected="true">Explore</button>
+      <button role="tab" id="tab-directions" aria-controls="view-directions" aria-selected="false">Directions</button>
+      <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">My Classes</button>
+      <button role="tab" id="tab-layers" aria-controls="view-layers" aria-selected="false">Layers</button>
+    </nav>
+
+    <div class="views">
+      <!-- EXPLORE -->
+      <section id="view-explore" role="tabpanel" aria-labelledby="tab-explore">
+        <div class="search">
+          <input id="q" type="search" placeholder="Search buildings, offices, rooms…" aria-label="Search buildings, departments, or rooms" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="qResults" aria-autocomplete="list" />
+          <ul id="qResults" class="results" role="listbox" hidden></ul>
+        </div>
+        <div id="chips" class="chips" aria-label="Filter by category"></div>
+        <div id="detail" hidden></div>
+        <div id="home">
+          <h2 class="h">Find nearest</h2>
+          <div class="quick" id="quick"></div>
+          <div id="nearestOut"></div>
+          <h2 class="h">Saved places</h2>
+          <ul id="favs" class="list"><li class="muted">Tap ☆ on a building to save it.</li></ul>
+          <h2 class="h">Recent</h2>
+          <ul id="recent" class="list"><li class="muted">Nothing yet.</li></ul>
+        </div>
+      </section>
+
+      <!-- DIRECTIONS -->
+      <section id="view-directions" role="tabpanel" aria-labelledby="tab-directions" hidden>
+        <div class="dir-form">
+          <div class="field place-field"><label for="from">From</label>
+            <input id="from" placeholder="Building or 📍 My location" autocomplete="off" />
+            <ul class="results" hidden></ul></div>
+          <button class="icon-btn swap" id="swapBtn" aria-label="Swap start and destination" title="Swap">⇅</button>
+          <div class="field place-field"><label for="to">To</label>
+            <input id="to" placeholder="Building, room, or department" autocomplete="off" />
+            <ul class="results" hidden></ul></div>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Route type" id="profiles"></div>
+        <p class="hint" id="profileHint"></p>
+        <div id="routeOut" aria-live="polite"></div>
+      </section>
+
+      <!-- SCHEDULE -->
+      <section id="view-schedule" role="tabpanel" aria-labelledby="tab-schedule" hidden>
+        <div class="seg days" id="dayPicker" role="radiogroup" aria-label="Day"></div>
+        <div id="dayPlan"></div>
+        <details class="card" id="addClass">
+          <summary>＋ Add a class</summary>
+          <form id="classForm">
+            <div class="field"><label for="cTitle">Course</label><input id="cTitle" required placeholder="e.g. COSC 236" /></div>
+            <div class="row">
+              <div class="field"><label for="cBldg">Building</label><select id="cBldg" required></select></div>
+              <div class="field small"><label for="cRoom">Room</label><input id="cRoom" placeholder="4310" /></div>
+            </div>
+            <fieldset class="field"><legend>Days</legend><div class="daychecks" id="cDays"></div></fieldset>
+            <div class="row">
+              <div class="field"><label for="cStart">Starts</label><input id="cStart" type="time" required value="09:30" /></div>
+              <div class="field"><label for="cEnd">Ends</label><input id="cEnd" type="time" required value="10:45" /></div>
+            </div>
+            <button class="btn primary" type="submit">Add class</button>
+          </form>
+        </details>
+        <details class="card">
+          <summary>📅 Export to calendar</summary>
+          <div class="row">
+            <div class="field"><label for="termStart">First day</label><input id="termStart" type="date" /></div>
+            <div class="field"><label for="termEnd">Last day</label><input id="termEnd" type="date" /></div>
+          </div>
+          <button class="btn" id="icsBtn">Download .ics</button>
+          <p class="hint">Works with Google Calendar, Apple Calendar and Outlook. Each event includes the building and room.</p>
+        </details>
+      </section>
+
+      <!-- LAYERS -->
+      <section id="view-layers" role="tabpanel" aria-labelledby="tab-layers" hidden>
+        <h2 class="h">Base map</h2>
+        <div class="seg" id="basemaps" role="radiogroup" aria-label="Base map"></div>
+        <h2 class="h">Show on map</h2>
+        <div id="layerToggles" class="toggles"></div>
+        <div class="field"><label for="permit">Parking permit</label>
+          <select id="permit"><option value="">All permits</option></select></div>
+        <p class="hint" id="shuttleNote"></p>
+        <h2 class="h">Preferences</h2>
+        <div class="field"><label for="pace">Walking pace</label>
+          <select id="pace"><option value="1.1">Relaxed</option><option value="1.34" selected>Typical</option><option value="1.6">Brisk</option></select></div>
+        <div class="field"><label for="units">Units</label>
+          <select id="units"><option value="imperial">Feet / miles</option><option value="metric">Meters / km</option></select></div>
+        <p class="hint" id="dataNote"></p>
+      </section>
+    </div>
+  </aside>
+
+  <div class="map-ctrls">
+    <button class="fab" id="locateBtn" title="Show my location" aria-label="Show my location">◎</button>
+    <button class="fab" id="resetBtn" title="Recenter campus" aria-label="Recenter on campus">⌂</button>
+  </div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

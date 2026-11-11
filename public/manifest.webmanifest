@@ -1,0 +1,11 @@
+{
+  "name": "TigerNav – Towson University Campus Map",
+  "short_name": "TigerNav",
+  "description": "Search Towson University buildings, get accessible walking directions, and plan your class schedule.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

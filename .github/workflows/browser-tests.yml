@@ -26,9 +26,9 @@ jobs:
       - run: npm run build
       - name: Run smoke test
         run: |
-          npx vite preview --port 4173 --strictPort &
-          node -e "(async()=>{for(let i=0;i<30;i++){try{if((await fetch('http://localhost:4173/')).ok)return}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)})()"
-          node tests/browser/smoke.mjs
+          npx vite preview --host 127.0.0.1 --port 4173 --strictPort &
+          node -e "(async()=>{for(let i=0;i<30;i++){try{if((await fetch('http://127.0.0.1:4173/')).ok)return}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)})()"
+          SMOKE_URL=http://127.0.0.1:4173/ node tests/browser/smoke.mjs
       - name: Save screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,13 +1,13 @@
 {
   "bounds": [
-    -76.645,
-    39.37,
-    -76.58,
-    39.415
+    -76.68,
+    39.355,
+    -76.545,
+    39.445
   ],
   "minzoom": 0,
   "maxzoom": 15,
   "build": "20261111",
-  "generated": "2026-11-11T14:21:28.199Z",
+  "generated": "2026-11-11T14:27:49.300Z",
   "attribution": "© OpenStreetMap contributors · Protomaps"
 }

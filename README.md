@@ -14,6 +14,7 @@ A campus map and wayfinding app for Towson University.
 | Challenges & badges | Three new challenges every Monday plus 18 badges for steps, streaks and exploring campus; buildings count as visited when you're there with location on |
 | Hall Cup | Weekly step leaderboard between residence halls (plus Commuters), ranked by average steps per walker; last week's winner is announced each Monday and everyone who walked for the winning hall earns the **Hall champion** badge (3 wins: **Dynasty**) |
 | Walk With Me | Share a walk with a friend; if you're 5+ minutes late it asks "Are you OK?", and no answer brings up TU Police, 911 and text-a-friend buttons. Your friend follows along from a link |
+| Self-guided tour | Ten stops from Admissions to the sciences (~2 mi, ~40 min); opens each stop on arrival, read-aloud, step-free option; share `…/#tour` (e.g. as a QR code) to start it. Stops live in `src/data/tour.js` |
 | Walking directions | Turn-by-turn steps with walking time and arrival time |
 | Accessible routing | Avoids stairs, raised curbs and paths marked not wheelchair-accessible; prefers ramps and curb cuts; slower pace for time estimates |
 | Well-lit night routing | Prefers lit paths and paths near emergency phones |
@@ -186,6 +187,8 @@ src/
   ui/notify.js        class reminder notifications
   ui/pulse.js         Campus Pulse
   ui/walk.js          Walk With Me screens
+  ui/tour.js          self-guided tour
+  data/tour.js        tour stops and wording  ← edit me (have Admissions review)
   config.js           Supabase settings (optional)
 supabase/schema.sql   cloud accounts table + security rules
   main.js             app UI (Leaflet map, panels, URL state)

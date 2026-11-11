@@ -136,3 +136,16 @@ test('Hall Champion: previous week, winner, eligibility, badges', async () => {
   data.hallWins.push('2026-W47', '2026-W49');
   assert.ok(newBadges(data, BUILDINGS).includes('hall-dynasty'));
 });
+
+test('tour: every stop is a real building, in a sensible walking order', async () => {
+  const { TOUR } = await import('../src/data/tour.js');
+  const { distance } = await import('../src/lib/geo.js');
+  assert.ok(TOUR.stops.length >= 8);
+  const by = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
+  for (const s of TOUR.stops) { assert.ok(by[s.building], `unknown building ${s.building}`); assert.ok(s.text.length > 40); }
+  assert.equal(TOUR.stops[0].building, 'ES'); // starts where Admissions runs tours
+  for (let i = 0; i + 1 < TOUR.stops.length; i++) {
+    const d = distance(by[TOUR.stops[i].building], by[TOUR.stops[i + 1].building]);
+    assert.ok(d < 700, `stop ${i + 1}→${i + 2} is ${Math.round(d)} m apart`);
+  }
+});

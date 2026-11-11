@@ -22,6 +22,7 @@ import { isDarkOutside } from './lib/sun.js';
 import { renderPulse } from './ui/pulse.js';
 import { getWeather, weatherAdvice } from './lib/weather.js';
 import { createWalkWithMe, createWatchView } from './ui/walk.js';
+import { createTour } from './ui/tour.js';
 import { parseWatch } from './lib/walkwithme.js';
 import { recordVisit, newBadges, BADGES, weeklyChallenges, weekStats, challengeProgress, weekKey } from './lib/challenges.js';
 import { teamOptions, rankRows, previousWeek, winnerOf, isChampion } from './lib/leaderboard.js';
@@ -130,7 +131,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S.ba
 
 const layers = {
   outlines: L.layerGroup(), buildings: L.layerGroup(), parking: L.layerGroup(),
-  shuttle: L.layerGroup(), safety: L.layerGroup(), access: L.layerGroup(), route: L.layerGroup().addTo(map), me: L.layerGroup().addTo(map),
+  shuttle: L.layerGroup(), safety: L.layerGroup(), access: L.layerGroup(), route: L.layerGroup().addTo(map), tour: L.layerGroup().addTo(map), me: L.layerGroup().addTo(map),
 };
 const markers = new Map();
 
@@ -360,11 +361,15 @@ function showTab(name) {
     $(`#view-${t}`).hidden = t !== name;
   }
   $('#view-account').hidden = name !== 'account';
+  $('#view-tour').hidden = name !== 'tour';
+  map.getContainer().classList.toggle('touring', name === 'tour'); // fade regular pins so the tour stops stand out
+  if (name !== 'tour') layers.tour.clearLayers();
   $('#acctBtn').setAttribute('aria-pressed', String(name === 'account'));
   S.tab = name;
   if (name === 'schedule') renderSchedule();
   if (name === 'account' || name === 'activity') meView?.render();
   if (name === 'account') sheet('full');
+  if (name === 'tour') { sheet('half'); tour.start(); }
   if (name === 'explore' && !S.selected) renderPulseNow(); // fresh next-class times and Hall Cup
   if (name !== 'directions' && name !== 'schedule') layers.route.clearLayers();
   if (name === 'directions' && S.options) drawRoutes();
@@ -713,6 +718,7 @@ function startWatch() {
     S.me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
     detectVisit(S.me);
     wwm?.position(S.me);
+    tour?.position(S.me);
     if (!meMarker) {
       meMarker = L.marker([S.me.lat, S.me.lng], { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18] }), interactive: false, keyboard: false }).addTo(layers.me);
       meCircle = L.circle([S.me.lat, S.me.lng], { radius: S.me.acc, weight: 1, color: '#2563eb', fillOpacity: 0.08, interactive: false }).addTo(layers.me);
@@ -885,6 +891,7 @@ function writeHash() {
   else if (S.tab === 'layers') p.set('tab', 'layers');
   else if (S.tab === 'account') p.set('tab', 'account');
   else if (S.tab === 'activity') p.set('tab', 'activity');
+  else if (S.tab === 'tour') p.set('tour', String(tour.index + 1));
   else if (S.selected) { p.set('b', S.selected); if (S.room) p.set('room', S.room.room); }
   const h = p.toString();
   history.replaceState(null, '', location.pathname + location.search + (h ? '#' + h : ''));
@@ -895,6 +902,7 @@ function readHash() {
   try {
     const watch = parseWatch(p);
     if (watch) { startWatching(watch); showTab('explore'); return; }
+    if (p.has('tour')) { const n = Math.max(1, +p.get('tour') || 1); showTab('tour'); tour.start(Math.min(n, tour.stops.length) - 1); return; }
     if (p.has('from') || p.has('to')) {
       const k = p.get('route') ?? LEGACY_MODE[p.get('mode')];
       if (k) S.requestedKind = k;
@@ -944,6 +952,15 @@ async function loadOsm() {
 
 // ---------------------------------------------------------------- accounts, activity, reminders
 let meView, tracker, reminders, wwm;
+const tour = createTour({
+  map, el: $('#tourOut'), byId, layer: layers.tour, toast,
+  computeRoute: (a, b, profile) => computeRoute(a, b, profile),
+  fitView: (bounds) => fitView(bounds),
+  units: () => S.units,
+  startLocation: () => startWatch(),
+  directionsTo: (id) => { setPlace('from', S.me ? { type: 'me' } : null); setPlace('to', { type: 'building', id }); showTab('directions'); },
+  onExit: () => showTab('explore'),
+});
 
 // ---------------------------------------------------------------- Campus Pulse
 function nextClassWalk(cls) {
@@ -967,6 +984,7 @@ function renderPulseNow() {
       directionsTo: (cls) => { const w = nextClassWalk(cls); setPlace('from', w?.from ?? (S.me ? { type: 'me' } : null)); setPlace('to', { type: 'building', id: cls.building }); showTab('directions'); },
       addClasses: () => { showTab('schedule'); $('#addClass').open = true; },
       signIn: () => meView.showWelcome(),
+      tour: () => showTab('tour'),
       walkWithMe: () => { showTab('directions'); if (!S.to) { toast('Choose where you’re walking to, then tap 🛡️ Walk With Me'); $('#to').focus(); } else wwm.open(); },
       stepFreeToday: () => { try { sessionStorage.setItem('tigerpath.stepFreeDay', dayKey()); } catch { /* ignore */ } toast('Step-free routes will be picked first today'); renderPulseNow(); if (S.from && S.to) updateRoute({ fit: false }); },
       openAccount: () => showTab('activity'),
@@ -1195,6 +1213,7 @@ window.__tigerpath = { map }; // for the browser smoke test
   buildGraph();
   await initAccounts();
   applyTheme();
+  $('#tourBtn').onclick = () => { try { sessionStorage.setItem('tigerpath.guestSession', '1'); } catch { /* ignore */ } meView.hideWelcome(); showTab('tour'); };
   // Welcome screen first — unless signed in, already chose guest this session, or opened a shared link
   let guestSession = false; try { guestSession = !!sessionStorage.getItem('tigerpath.guestSession'); } catch { /* ignore */ }
   if (!acc.user && !guestSession && !location.hash && !EDIT) meView.showWelcome();

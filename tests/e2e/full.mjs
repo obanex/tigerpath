@@ -365,6 +365,27 @@ await check('Editor: download accessibility.js', async () => {
   const src = await readFile(await dl.path(), 'utf8'); expect(/"type": "entrance"/.test(src), 'entrance missing');
 });
 
+// ============================================================ 8b. Self-guided tour
+group('8b. Self-guided tour');
+const cT = await newCtx({ geolocation: { latitude: 39.39481, longitude: -76.61631, accuracy: 5 }, permissions: ['geolocation'] }, 'tour');
+const pT = await cT.newPage();
+await check('Welcome screen → "Visiting campus?" starts the tour at Admissions', async () => {
+  await pT.goto(BASE); await pT.waitForSelector('#welcome:not([hidden])'); await pT.click('#tourBtn'); await pT.waitForSelector('.tour-stop');
+  const h = await pT.locator('.tour-stop h2').innerText(); expect(h === 'Enrollment Services Center', h);
+  return `${await pT.locator('.tourmark').count()} stops · ${await pT.locator('#tourOut .hint').first().innerText()}`;
+});
+await check('Next / previous, and arriving opens the next stop', async () => {
+  await pT.click('#tourNext'); const a = await pT.locator('.tour-stop h2').innerText(); await pT.click('#tourPrev');
+  await pT.check('#tourAuto'); await pT.waitForTimeout(800);
+  await cT.setGeolocation({ latitude: 39.39384, longitude: -76.61814, accuracy: 5 }); await pT.waitForTimeout(1500);
+  const b = await pT.locator('.tour-stop h2').innerText(); expect(a === 'West Village Commons' && b === 'West Village Commons', `${a} / ${b}`); return 'arrived → stop 2';
+});
+await check('Shared tour link (#tour=4) opens that stop, no sign-in in the way', async () => {
+  const p = await cT.newPage(); await p.goto(BASE + '#tour=4'); await p.waitForSelector('.tour-stop');
+  const h = await p.locator('.tour-stop h2').innerText(), w = await p.locator('#welcome').isVisible(); await p.close();
+  expect(h === 'University Union' && !w, `${h}, welcome ${w}`);
+});
+
 // ============================================================ 9. Offline & install
 group('9. Offline & installable app');
 await check('Web app manifest + icon', async () => {

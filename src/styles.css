@@ -219,6 +219,23 @@ table.hours td { padding: 3px 0; } table.hours tr.today { font-weight: 700; }
 .pbar > span { display: block; height: 100%; background: var(--chart); border-radius: 3px; }
 .link-btn { background: none; border: 0; padding: 4px 0 0; color: var(--fg2); cursor: pointer; text-align: left; font-size: .82rem; text-decoration: underline; }
 
+/* ---------- self-guided tour ---------- */
+.tour-cta { margin-top: 8px; border-color: var(--gold); }
+.tour-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tour-dots { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 10px 0; }
+.tour-dots button { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); color: var(--fg); font-weight: 700; cursor: pointer; }
+.tour-dots .done button { background: var(--bg3); color: var(--fg2); }
+.tour-dots .cur button { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
+.tour-stop { border: 1px solid var(--line); border-left: 6px solid var(--gold); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; }
+.tour-stop h2 { margin: 2px 0 0; font-size: 1.3rem; }
+.tour-stop p { margin: 4px 0; line-height: 1.5; }
+.tour-stop .look { font-size: .9rem; color: var(--fg2); }
+.touring .bmark, .touring .pmark { opacity: .35; }
+.touring .blabel { display: none; }
+.tourmark { width: 32px; height: 32px; border-radius: 50%; background: var(--black); color: var(--gold); border: 3px solid var(--gold); font: 800 14px/26px system-ui, sans-serif; text-align: center; box-shadow: 0 2px 6px rgb(0 0 0 / .4); }
+.tourmark.cur { background: var(--gold); color: var(--gold-ink); border-color: #fff; transform: scale(1.25); }
+.tourmark.done { background: #737373; color: #fff; border-color: #fff; }
+
 /* ---------- Hall Cup ---------- */
 table.board { width: 100%; border-collapse: collapse; font-size: .85rem; margin: 6px 0; }
 table.board th { text-align: left; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--fg2); padding: 4px 6px; border-bottom: 1px solid var(--line); }

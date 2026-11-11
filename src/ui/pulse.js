@@ -95,6 +95,11 @@ export function renderPulse(el, ctx) {
       ${!acc.data.settings.hall || acc.data.settings.hallCup === false ? `<button class="link-btn" data-act="${acc.user ? 'account' : 'signin'}">${acc.user ? 'Pick your hall to compete →' : 'Sign in to compete for your hall →'}</button>` : ''}</div>`);
   }
 
+  // --- Self-guided tour (visitors, prospective students, families)
+  parts.push(`<div class="pulse-card"><span class="pc-label">🎒 Self-guided tour</span>
+    <span class="small">New here or showing family around? Ten stops, about 2 miles and 40 minutes of walking, at your own pace.</span>
+    <div class="btn-row"><button class="btn small" data-act="tour">Start the tour</button></div></div>`);
+
   // --- Walk With Me
   parts.push(`<div class="pulse-card wwm${dark ? ' dark' : ''}"><span class="pc-label">🛡️ Walk With Me</span>
     <span class="small">${dark ? "It's dark out. Share your walk with a friend — we'll check in if you're running late." : 'Share any walk with a friend, with a safety check-in if you\'re running late.'}</span>
@@ -108,6 +113,7 @@ export function renderPulse(el, ctx) {
     else if (a === 'addclasses') act.addClasses();
     else if (a === 'signin') act.signIn();
     else if (a === 'walk') act.walkWithMe();
+    else if (a === 'tour') act.tour();
     else if (a === 'stepfree') act.stepFreeToday();
     else if (a === 'account') act.openAccount();
   };

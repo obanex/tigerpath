@@ -27,6 +27,11 @@ npm test           # unit tests (routing, search, hours, schedule, OSM import, e
 npm run build      # static site in dist/ — host anywhere (towson.edu, GitHub Pages, Netlify…)
 ```
 
+### Deploying
+
+Every push to `main` runs the tests, builds the site and publishes it to GitHub Pages
+(`.github/workflows/deploy.yml`). One-time setup: **Settings → Pages → Source: GitHub Actions**.
+
 ## ⚠️ Before launch: verify the data
 
 The seed data in `src/data/` was compiled without access to official TU GIS data, so:

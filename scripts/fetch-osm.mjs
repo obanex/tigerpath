@@ -15,7 +15,18 @@ const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
 ];
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchOverpass() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) { console.log(`Retrying in ${15 * attempt}s …`); await sleep(15000 * attempt); }
+    const json = await tryEndpoints();
+    if (json) return json;
+  }
+  throw new Error('All Overpass endpoints failed. Try again later or use --from <file>.');
+}
+
+async function tryEndpoints() {
   for (const url of ENDPOINTS) {
     try {
       console.log(`Querying ${url} …`);
@@ -30,7 +41,7 @@ async function fetchOverpass() {
       console.warn(`  failed: ${err.message}`);
     }
   }
-  throw new Error('All Overpass endpoints failed. Try again later or use --from <file>.');
+  return null;
 }
 
 const fromIdx = process.argv.indexOf('--from');

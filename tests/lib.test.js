@@ -120,3 +120,11 @@ test('editor patches building coordinates in source text', async () => {
   assert.deepEqual([by.LA.lat, by.LA.lng, by.CK.lat, by.CK.lng], [39.1, -76.2, 39.3, -76.4]);
   assert.equal(by.HH.lat, 39.3941); // untouched
 });
+
+test('OSM processing keeps named places from `out center`', () => {
+  const data = processOverpass({ elements: [
+    { type: 'way', id: 5, center: { lat: 39.388, lon: -76.615 }, tags: { leisure: 'stadium', name: 'Johnny Unitas Stadium' } },
+    { type: 'node', id: 6, lat: 39.39, lon: -76.61, tags: { amenity: 'cafe', name: 'Campus Cafe' } },
+  ] });
+  assert.deepEqual(data.pois.map((p) => p.name), ['Johnny Unitas Stadium', 'Campus Cafe']);
+});

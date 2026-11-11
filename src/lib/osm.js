@@ -21,7 +21,14 @@ export const OVERPASS_QUERY = `
 );
 out body;
 >;
-out skel qt;`;
+out skel qt;
+(
+  nwr["leisure"~"^(stadium|pitch|sports_centre|track|park)$"]["name"](${CAMPUS_BBOX.join(',')});
+  nwr["amenity"~"^(clinic|doctors|cafe|fast_food|restaurant|food_court|library)$"]["name"](${CAMPUS_BBOX.join(',')});
+  nwr["place"="square"](${CAMPUS_BBOX.join(',')});
+  nwr["highway"="pedestrian"]["name"](${CAMPUS_BBOX.join(',')});
+);
+out center tags;`;
 
 // Unnamed houses around campus are skipped to keep the data file small.
 const CAMPUS_BUILDING_TYPES = new Set(['university', 'college', 'school', 'dormitory', 'stadium', 'sports_hall', 'parking']);
@@ -40,8 +47,16 @@ export function processOverpass(json) {
   const safety = [];
   const entrances = [];
 
+  const pois = [];
   for (const el of json.elements) {
     const t = el.tags ?? {};
+    if (el.center && t.name) { // from `out center` — named places (stadiums, clinics, food, plazas)
+      pois.push({ name: t.name, kind: t.leisure ?? t.amenity ?? t.place ?? t.highway, lat: el.center.lat, lng: el.center.lon });
+      continue;
+    }
+    if (el.type === 'node' && t.name && (t.amenity || t.leisure || t.place)) {
+      pois.push({ name: t.name, kind: t.leisure ?? t.amenity ?? t.place, lat: el.lat, lng: el.lon });
+    }
     if (el.type === 'node') {
       if (t.emergency === 'phone') safety.push({ kind: 'phone', lat: el.lat, lng: el.lon, name: t.name ?? 'Emergency phone' });
       if (t.emergency === 'defibrillator') safety.push({ kind: 'aed', lat: el.lat, lng: el.lon, name: t.name ?? 'AED', where: t['defibrillator:location'] });
@@ -78,7 +93,7 @@ export function processOverpass(json) {
     attribution: '© OpenStreetMap contributors (ODbL)',
     nodes: [...usedNodes].map((id) => [id, round(nodes.get(id).lat), round(nodes.get(id).lon)]),
     edges,
-    buildings, parking, safety, entrances,
+    buildings, parking, safety, entrances, pois,
   };
 }
 

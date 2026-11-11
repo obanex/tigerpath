@@ -91,6 +91,7 @@ function setBasemap(kind = S.basemap) {
     baseLayer = leafletLayer({
       url: `${import.meta.env.BASE_URL}tiles/{z}/{x}/{y}.mvt`, flavor: isDark() ? 'dark' : 'light', lang: 'en',
       maxDataZoom: selfHosted.maxzoom, maxZoom: 20,
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2), // 3× iPhone canvases can exceed Safari's canvas memory limit
       attribution: `${OSM_ATTR} · <a href="https://protomaps.com">Protomaps</a>`,
     }).addTo(map);
   } else {

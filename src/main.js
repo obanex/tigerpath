@@ -1,6 +1,7 @@
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
 import L from 'leaflet';
+import { leafletLayer } from 'protomaps-leaflet';
 import { BUILDINGS, CATEGORIES, AMENITY_LABELS } from './data/buildings.js';
 import { PARKING, PERMIT_LABELS, SHUTTLES, LIVE_SHUTTLE_URL, SAFETY, CLOSURES } from './data/places.js';
 import { buildSeedGraph, route, directions, PROFILES } from './lib/graph.js';
@@ -58,14 +59,26 @@ const map = L.map('map', { zoomControl: false, maxZoom: 20, minZoom: 14 }).setVi
 L.control.zoom({ position: 'topright' }).addTo(map);
 L.control.scale({ position: 'bottomright', imperial: true, metric: true }).addTo(map);
 
-// Street map: OpenStreetMap's standard tiles (free, no API key; dark mode darkens them with a CSS filter).
-// For heavy traffic, switch to a hosted tile provider (see README).
+// Street map: self-hosted vector tiles in public/tiles (built monthly by the
+// "Build self-hosted map" workflow from Protomaps' free OpenStreetMap builds) —
+// no API key, no third-party tile server. Falls back to OpenStreetMap's tile
+// server only if the tiles are missing.
 const OSM_ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const TILE = {
   map: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', OSM_ATTR, 19],
   satellite: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 'Imagery © Esri, Maxar, Earthstar Geographics', 19],
 };
-let baseLayer;
+let baseLayer, selfHosted = null;
+async function loadBasemapMeta() {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}tiles/meta.json`);
+    if (res.ok && res.headers.get('content-type')?.includes('json')) selfHosted = await res.json();
+  } catch { /* fall back to the OSM tile server */ }
+  if (selfHosted) {
+    const [w, s_, e, n] = selfHosted.bounds;
+    map.setMaxBounds(L.latLngBounds([s_, w], [n, e]).pad(0.15));
+  }
+}
 function isDark() {
   const t = document.documentElement.dataset.theme;
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -74,10 +87,20 @@ function setBasemap(kind = S.basemap) {
   if (!TILE[kind]) kind = 'map'; // older saved choices ('auto', 'osm') → street map
   S.basemap = kind; store.set('basemap', kind);
   if (baseLayer) map.removeLayer(baseLayer);
-  const [url, attribution, maxNativeZoom] = TILE[kind];
-  baseLayer = L.tileLayer(url, { attribution, maxZoom: 20, maxNativeZoom, className: kind === 'map' ? 'street-tiles' : '' }).addTo(map);
+  if (kind === 'map' && selfHosted) {
+    baseLayer = leafletLayer({
+      url: `${import.meta.env.BASE_URL}tiles/{z}/{x}/{y}.mvt`, flavor: isDark() ? 'dark' : 'light', lang: 'en',
+      maxDataZoom: selfHosted.maxzoom, maxZoom: 20,
+      attribution: `${OSM_ATTR} · <a href="https://protomaps.com">Protomaps</a>`,
+    }).addTo(map);
+  } else {
+    const [url, attribution, maxNativeZoom] = TILE[kind];
+    baseLayer = L.tileLayer(url, { attribution, maxZoom: 20, maxNativeZoom, className: kind === 'map' ? 'street-tiles' : '' }).addTo(map);
+  }
+  baseLayer.bringToBack?.();
   renderSeg('#basemaps', [['map', 'Map'], ['satellite', 'Satellite']], S.basemap, setBasemap);
 }
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S.basemap === 'map' && selfHosted && setBasemap('map'));
 
 const layers = {
   outlines: L.layerGroup(), buildings: L.layerGroup(), parking: L.layerGroup(),
@@ -754,6 +777,7 @@ function renderAccessLegend() {
 function applyTheme(t) {
   if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
   store.set('theme', t ?? null);
+  if (S.basemap === 'map' && selfHosted) setBasemap('map'); // switch light/dark map style
 }
 $('#themeBtn').onclick = () => applyTheme(isDark() ? 'light' : 'dark');
 
@@ -892,6 +916,7 @@ function renderReminderCard() {
 
 (async function boot() {
   const theme = store.get('theme', null); if (theme) document.documentElement.dataset.theme = theme;
+  await loadBasemapMeta();
   setBasemap(S.basemap);
   await loadOsm();
   buildGraph();

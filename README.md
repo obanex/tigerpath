@@ -126,6 +126,8 @@ supabase/schema.sql   cloud accounts table + security rules
   main.js             app UI (Leaflet map, panels, URL state)
 scripts/fetch-osm.mjs
 public/sw.js          offline support
+public/tiles/         self-hosted map tiles (built by the Build self-hosted map workflow)
+scripts/build-basemap.mjs  turns a Protomaps extract into tile files
 ```
 
 Temporary closures go in `CLOSURES` in `src/data/places.js` with an `until` date; routes avoid them until that date.
@@ -139,4 +141,14 @@ Temporary closures go in `CLOSURES` in `src/data/places.js` with an `until` date
 - **Accessibility reports**: users flag a broken elevator or a blocked ramp, and accessible routing avoids it right away.
 - **Study-space occupancy** from library/Union capacity counters.
 
-Map tiles: © OpenStreetMap contributors, imagery © Esri. The street map uses OpenStreetMap's free tile server, which is fine for a campus project; if TigerPath gets heavy traffic, switch to a hosted provider such as MapTiler or Stadia Maps (free tiers, API key needed) in `TILE` in `src/main.js`. Not an official Towson University product.
+## The map
+
+The street map is **self-hosted**: `public/tiles` holds vector tiles for campus and downtown Towson, cut from
+[Protomaps](https://protomaps.com)' free daily OpenStreetMap builds. There's no API key, no tile provider and no usage
+limit, and it works offline once loaded. The **Build self-hosted map** workflow refreshes it on the 3rd of each month
+(or run it from the Actions tab), commits the new tiles and redeploys. To cover a bigger area, widen `BBOX` in
+`.github/workflows/build-basemap.yml`.
+
+Satellite view uses Esri's free World Imagery service, which has no uptime guarantee, so treat it as optional.
+
+Map data © OpenStreetMap contributors. Not an official Towson University product.

@@ -1,5 +1,5 @@
-// TigerPath service worker: app shell works offline, map tiles you've viewed are cached.
-const APP = 'tigerpath-app-v3';
+// TigerPath service worker: the app and the self-hosted map work offline once viewed.
+const APP = 'tigerpath-app-v4';
 const TILES = 'tigerpath-tiles-v2'; // v2: drop cached CARTO tiles
 const MAX_TILES = 1500;
 const TILE_HOSTS = /(tile\.openstreetmap\.org|server\.arcgisonline\.com)$/;
@@ -17,7 +17,7 @@ async function trim(cache) {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET') return;
+  if (req.method !== 'GET' || req.headers.has('range')) return; // the Cache API can't store partial responses
   const url = new URL(req.url);
   if (TILE_HOSTS.test(url.hostname)) { // cache-first for tiles
     e.respondWith(caches.open(TILES).then(async (c) => {

@@ -1,7 +1,7 @@
 {
-  "name": "TigerPath – Towson University Campus Map",
-  "short_name": "TigerPath",
-  "description": "Search Towson University buildings, get accessible walking directions, and plan your class schedule.",
+  "name": "TU TigerPath – Campus Walking Guide",
+  "short_name": "TU TigerPath",
+  "description": "Find any TU building, office or room, get step-free walking directions, and plan your class schedule.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

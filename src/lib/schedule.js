@@ -65,7 +65,7 @@ export function toICS(classes, { termStart, termEnd, buildingName = (id) => id, 
       `DTEND:${ymd}T${t(c.end)}`,
       `RRULE:FREQ=WEEKLY;BYDAY=${c.days.map((d) => ICS_DAY[d]).join(',')};UNTIL=${until}`,
       `SUMMARY:${esc(c.title)}`,
-      `LOCATION:${esc(`${buildingName(c.building)}${c.room ? ' ' + c.room : ''}, Towson University`)}`,
+      `LOCATION:${esc(`${buildingName(c.building)}${c.room ? ' ' + c.room : ''}, Towson, MD`)}`,
       ...(alarmMinutes != null ? ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(`${c.title} starts in ${alarmMinutes} min`)}`, `TRIGGER:-PT${Math.max(0, Math.round(alarmMinutes))}M`, 'END:VALARM'] : []),
       'END:VEVENT',
     );

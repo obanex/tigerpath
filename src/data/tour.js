@@ -9,7 +9,7 @@
 
 export const TOUR = {
   title: 'Self-guided campus tour',
-  intro: 'Walk the heart of Towson University at your own pace — ten stops from Admissions to the sciences. Turn on your location and each stop opens as you arrive.',
+  intro: 'Walk the heart of TU’s campus at your own pace — ten stops from Admissions to the sciences. Turn on your location and each stop opens as you arrive.',
   stops: [
     { building: 'ES', title: 'Enrollment Services Center',
       text: 'Start here. Admissions, Financial Aid, the Registrar and the Bursar are all in this building — the offices you’ll deal with most before your first day.',

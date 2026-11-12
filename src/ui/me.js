@@ -241,7 +241,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
       <button class="btn ${live ? '' : 'primary'} wide" id="trackBtn">${live ? '■ Stop tracking' : '▶ Start tracking a walk'}</button>
       <p class="hint" id="trackStatus" aria-live="polite">${live
         ? `Tracking · ${fmtMiles(live.meters)} mi · ${fmtInt(live.steps)} steps${live.usingMotion ? '' : ' (estimated from distance)'}. Keep TigerPath open — phones pause web apps in the background.`
-        : 'Walks during “Start walking” directions count automatically. Only daily totals are saved, never your route.'}</p>
+        : 'Walks you navigate with ▶ Start count automatically. Only daily totals are saved, never your route.'}</p>
 
       <h3 class="h">Last 7 days</h3>
       ${weekChart(lastDays(activity, 7), goals.steps)}

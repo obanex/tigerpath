@@ -239,9 +239,9 @@ export function directions(g, result, { fromLabel, toLabel } = {}) {
     }
     const passes = s.passes.filter(Boolean);
     if (passes.length) text += `, passing ${passes.slice(0, 2).join(' and ')}`;
-    steps.push({ text, dist: s.dist, type: i === 0 ? 'depart' : 'turn', at: pts[s.from] });
+    steps.push({ text, dist: s.dist, type: i === 0 ? 'depart' : 'turn', at: pts[s.from], idx: s.from });
   });
-  steps.push({ text: `Arrive at ${toLabel ?? 'destination'}`, dist: 0, type: 'arrive', at: pts[pts.length - 1] });
+  steps.push({ text: `Arrive at ${toLabel ?? 'destination'}`, dist: 0, type: 'arrive', at: pts[pts.length - 1], idx: pts.length - 1 });
   return steps;
 }
 

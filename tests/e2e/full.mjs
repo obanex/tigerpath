@@ -171,11 +171,36 @@ await check('Far-away pin gets a clear message (Goucher College)', async () => {
   await open(p1, `#from=${P.GOUCHER.join(',')}&to=CK`); await p1.waitForTimeout(800);
   const t = await text(p1.locator('#routeOut')); expect(/too far from campus paths/.test(t), t.slice(0, 80));
 });
-await check('Live walking: start, follow, arrive', async () => {
+await check('Turn-by-turn navigation: next turn, prompts, progress, arrival', async () => {
   await c1.setGeolocation({ latitude: P.CK[0], longitude: P.CK[1], accuracy: 5 });
-  await open(p1, '#from=me&to=LA'); await p1.waitForSelector('.ropt'); await p1.click('#liveBtn');
-  await c1.setGeolocation({ latitude: P.LA[0], longitude: P.LA[1], accuracy: 5 }); await p1.waitForTimeout(1500);
-  const t = await text(p1.locator('#toast')); expect(/arrived/i.test(t), t); return t;
+  await open(p1, '#from=me&to=LA'); await p1.waitForSelector('.ropt');
+  await p1.evaluate(() => { window.__said = []; if (window.speechSynthesis) window.speechSynthesis.speak = (u) => window.__said.push(u.text); });
+  await p1.click('#liveBtn'); await p1.waitForSelector('#navHud:not([hidden])');
+  const route = await p1.evaluate(() => window.__tigerpath.route());
+  const first = await text(p1.locator('#navHud'));
+  expect(/\d+ ft/.test(first), `banner: ${first}`);
+  let mid = '';
+  for (let i = 1; i < route.length; i++) { // walk the route, one fix per path point
+    await c1.setGeolocation({ latitude: route[i][0], longitude: route[i][1], accuracy: 5 }); await p1.waitForTimeout(220);
+    if (i === Math.floor(route.length / 2) && await p1.locator('#navBottom').isVisible()) mid = await text(p1.locator('#navBottom .nav-sum'));
+  }
+  await p1.waitForTimeout(600);
+  const said = await p1.evaluate(() => window.__said);
+  const t = await text(p1.locator('#toast'));
+  expect(/arrived/i.test(t), `toast: ${t}`);
+  expect(said.some((x) => /^In \d+ feet/.test(x)) && said.some((x) => /arrived/.test(x)), `said: ${said.join(' / ')}`);
+  expect(await p1.locator('#navHud').isHidden(), 'banner still shown after arrival');
+  return `${first.slice(0, 30)} → ${mid} → ${said.length} prompts → arrived`;
+});
+await check('Navigation reroutes after walking off the route', async () => {
+  await c1.setGeolocation({ latitude: P.CK[0], longitude: P.CK[1], accuracy: 5 });
+  await open(p1, '#from=me&to=LA'); await p1.waitForSelector('.ropt'); await p1.click('#liveBtn'); await p1.waitForTimeout(500);
+  const before = await p1.evaluate(() => JSON.stringify(window.__tigerpath.route()));
+  for (const pt of [[39.3931, -76.6075], [39.3930, -76.6077], [39.3929, -76.6079]]) { await c1.setGeolocation({ latitude: pt[0], longitude: pt[1], accuracy: 6 }); await p1.waitForTimeout(450); }
+  const after = await p1.evaluate(() => JSON.stringify(window.__tigerpath.route()));
+  expect(before !== after, 'no new route');
+  await p1.click('#navEnd'); expect(await p1.locator('#navHud').isHidden(), 'End did not stop navigation');
+  return 'new route from the off-route position · End stops';
 });
 
 // ============================================================ 3. Classes & reminders
@@ -405,6 +430,15 @@ group('8c. Demo mode');
     const badges = await p.locator('.badges li.on').count();
     expect(badges >= 3, `${badges} badges`);
     return `${classes} classes today · ${badges} badges · Glen Towers champion`;
+  });
+  await check('Demo: Start walks the route on screen (simulated, for presentations)', async () => {
+    await p.goto(BASE + '?demo#from=CK&to=LA'); await p.waitForSelector('.ropt', { timeout: 20000 });
+    await p.click('#liveBtn'); await p.waitForSelector('#navHud:not([hidden])');
+    const a = await text(p.locator('#navBottom .nav-sum')); await p.waitForTimeout(3200);
+    const b = await text(p.locator('#navBottom .nav-sum'));
+    expect(a !== b, `no progress: ${a}`);
+    await p.click('#navEnd');
+    return `${a} → ${b}`;
   });
   await check('Demo saves nothing: no cloud calls, no guest data written', async () => {
     const keys = await p.evaluate(() => Object.keys(localStorage));

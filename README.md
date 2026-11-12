@@ -21,7 +21,7 @@ A campus map and wayfinding app for Towson University.
 | Search | Buildings, codes, departments, offices, aliases, typos and **room numbers** (`LA 4310` → Liberal Arts, floor 4) |
 | Find nearest | Food open now, printing, study space, restrooms, accessible entrances and parking, ranked by real walking time |
 | Class schedule planner | Add classes, see each day's route, flags transitions you can't make on time, export to calendar (.ics) |
-| Live walking mode | Follows GPS, reroutes when you go off course, tells you when you've arrived |
+| Turn-by-turn navigation | Tap **▶ Start**: the map follows you, a banner shows the next turn and the distance to it ("280 ft · Bear right"), a voice says "In 150 feet, turn left" and "Turn left" (mute with 🔊), the walked part turns grey, the bottom shows time left and arrival time, it reroutes when you leave the route and tells you when you've arrived. GPS hiccups don't stop it, and the screen stays on. In demo mode it walks the route for you |
 | Open/closed status | Live "Open · closes 9pm" with weekly hours |
 | Shareable links | Every building, route and schedule day has its own URL |
 | Map layers | Parking (filter by permit), shuttle, emergency phones/AEDs, building footprints, satellite |
@@ -134,7 +134,7 @@ settings follow the account. Anything they did before signing up comes with them
 
 ## Activity tracking — what it can and can't do
 
-- **Distance** comes from GPS while tracking (or while using **Start walking** directions). Bad fixes, standing-still
+- **Distance** comes from GPS while tracking (or while navigating with **▶ Start**). Bad fixes, standing-still
   jitter and vehicle speeds are filtered out, and on-campus miles are counted separately.
 - **Steps** come from the phone's motion sensor when the browser allows it. Otherwise they're estimated from distance
   and the student's height.

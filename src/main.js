@@ -29,6 +29,7 @@ import { teamOptions, rankRows, previousWeek, winnerOf, isChampion } from './lib
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 import { tagGraph, addTuRoutes, mergeBuildings, activeConstruction } from './lib/tu.js';
 import { DemoBackend } from './lib/demo.js';
+import { createNav, update as navUpdate, splitRoute, turnIcon, shortText, spokenDistance } from './lib/nav.js';
 
 const CENTER = [39.3925, -76.6110];
 
@@ -791,7 +792,7 @@ function renderRouteOut() {
     <div class="summary"><span class="big">${formatMinutes(r.minutes)}</span><span class="muted">${formatDistance(r.res.dist, S.units)} · arrive ${arrive}</span></div>
     ${sel.stairs && stepfree ? `<p class="hint">⚠️ Includes stairs (red dashes). The ${esc(stepfree.label.toLowerCase())} option avoids them.</p>` : ''}
     ${S.wantStepFree && !optionFor('stepfree') ? `<p class="hint">♿ No step-free route found${S.to?.type === 'building' ? ` to ${esc(byId.get(S.to.id)?.name)}` : ''}. ${S.tu ? 'TU’s accessibility survey lists no accessible entrance or step-free path there. ' : ''}Accessibility &amp; Disability Services can help: <a href="tel:+14107042638">410-704-2638</a>.</p>` : ''}
-    <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ Stop' : '▶ Start walking'}</button><button class="btn" id="wwmBtn">🛡️ Walk With Me</button><button class="btn" id="shareRoute">Share</button><button class="btn" id="printRoute">Print</button></div>
+    <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ End' : '▶ Start'}</button><button class="btn" id="wwmBtn">🛡️ Walk With Me</button><button class="btn" id="shareRoute">Share</button><button class="btn" id="printRoute">Print</button></div>
     <ol class="steps">${r.steps.map((s, i) => `<li data-step="${i}"><span class="ico">${s.type === 'arrive' ? '★' : s.type === 'depart' ? '●' : /left/.test(s.text) ? '↰' : /right/.test(s.text) ? '↱' : '↑'}</span>
       <span>${esc(s.text)}</span><span class="d">${s.dist ? formatDistance(s.dist, S.units) : ''}</span></li>`).join('')}</ol>
     ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : `<p class="hint">Walkway data © OpenStreetMap contributors.${S.tu && sel.kind === 'stepfree' ? ' Accessibility data: Towson University campus map (preliminary).' : ''}</p>`}`;
@@ -803,24 +804,163 @@ function renderRouteOut() {
   $('#wwmBtn').onclick = () => wwm?.open();
 }
 
-// Live walking: follow the user, show remaining time, reroute when off course.
-function toggleLive() {
-  S.live = !S.live;
-  if (S.live) {
-    if (S.from?.type !== 'me') { setPlace('from', { type: 'me' }); }
-    startWatch(); toast(acc.user ? 'Following your location — this walk counts toward your goals.' : 'Following your location. Keep the app open.');
-    tracker.start('nav').catch(() => {});
-  } else if (tracker.source === 'nav') tracker.stop();
-  updateRoute({ fit: !S.live, keepChoice: true });
+// ---------------------------------------------------------------- turn-by-turn navigation
+// Like a car GPS, for walking: follows your position along the route, shows the next
+// turn and the distance to it, speaks prompts, reroutes when you leave the route,
+// and tells you when you've arrived. ?demo (or ?simulate) walks the route for you.
+const SIMULATE = DEMO || new URLSearchParams(location.search).has('simulate');
+let nav = null, navLayer = null, navFollow = true, navStep = -1, lastReroute = 0, simTimer = null;
+let navVoice = store.get('navVoice', true);
+const TURN_DEG = { straight: 0, 'slight-right': 45, right: 90, 'sharp-right': 135, 'slight-left': -45, left: -90, 'sharp-left': -135 };
+function turnSvg(kind) {
+  if (kind === 'arrive') return '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 44V6M14 8h22l-5 7 5 7H14" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+  const a = (TURN_DEG[kind] ?? 0) * Math.PI / 180;
+  const ex = 24 + 15 * Math.sin(a), ey = 22 - 15 * Math.cos(a);
+  const h = (d) => `${ex + 8 * Math.sin(a + d)},${ey - 8 * Math.cos(a + d)}`; // arrowhead wings
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 46V22L${ex},${ey}" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M${h(Math.PI * 0.8)}L${ex},${ey}L${h(-Math.PI * 0.8)}" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
+document.body.insertAdjacentHTML('beforeend', `
+  <div id="navHud" role="region" aria-label="Next turn" hidden>
+    <div class="nav-top"><div class="nav-icon" id="navIcon"></div>
+      <div class="nav-main"><div class="nav-dist" id="navDist"></div><div class="nav-text" id="navText"></div></div></div>
+    <div class="nav-then" id="navThen" hidden></div>
+  </div>
+  <p class="sr-only" id="navSay" aria-live="assertive"></p>
+  <div id="navBottom" role="region" aria-label="Trip progress" hidden>
+    <div class="nav-sum"><b id="navEta"></b><span id="navLeft"></span></div>
+    <div class="nav-btns">
+      <button class="fab" id="navRecenter" hidden aria-label="Re-center on my position">◎</button>
+      <button class="fab" id="navVoiceBtn"></button>
+      <button class="btn small" id="navOverview">Overview</button>
+      <button class="btn small danger" id="navEnd">End</button>
+    </div>
+  </div>`);
+function renderVoiceBtn() { const b = $('#navVoiceBtn'); b.textContent = navVoice ? '🔊' : '🔇'; b.setAttribute('aria-label', navVoice ? 'Voice guidance on' : 'Voice guidance off'); b.setAttribute('aria-pressed', String(navVoice)); }
+renderVoiceBtn();
+$('#navVoiceBtn').onclick = () => { navVoice = !navVoice; store.set('navVoice', navVoice); renderVoiceBtn(); if (!navVoice) window.speechSynthesis?.cancel(); };
+$('#navEnd').onclick = () => endNav();
+$('#navRecenter').onclick = () => { navFollow = true; $('#navRecenter').hidden = true; if (S.me) map.setView([S.me.lat, S.me.lng], Math.max(map.getZoom(), 18)); };
+$('#navOverview').onclick = () => { navFollow = false; $('#navRecenter').hidden = false; fitView(L.latLngBounds(nav ? nav.pts.map((p) => [p.lat, p.lng]) : [])); };
+map.on('dragstart', () => { if (S.live) { navFollow = false; $('#navRecenter').hidden = false; } });
+
+function say(text) {
+  $('#navSay').textContent = text; // screen readers hear every prompt, voice on or off
+  if (!navVoice || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.02;
+  speechSynthesis.speak(u);
+}
+
+function toggleLive() { if (S.live) endNav(); else startNav(); }
+function startNav() {
+  if (!S.to) { toast('Choose a destination first'); return; }
+  if (SIMULATE) { // presentations: walk the route on screen from wherever it starts
+    if (!S.lastRoute) return;
+    beginNav(); startSimulation(); return;
+  }
+  if (!S.me) { toast('Finding your location…'); S.navPending = true; startWatch(); return; }
+  if (S.from?.type !== 'me') setPlace('from', { type: 'me' }); // navigation always starts where you are
+  else updateRoute({ fit: false, keepChoice: true });
+  if (!S.lastRoute) { toast('Couldn’t find a walking route from where you are.'); return; }
+  beginNav();
+}
+function beginNav() {
+  S.live = true; nav = createNav(S.lastRoute); navStep = -1; navFollow = true;
+  document.body.classList.add('navigating');
+  $('#navHud').hidden = false; $('#navBottom').hidden = false; $('#navRecenter').hidden = true;
+  sheet('peek');
+  tracker.start('nav').catch(() => {}); // keeps the screen on; walks count toward goals when signed in
+  renderRouteOut();
+  const start = S.me && !SIMULATE ? S.me : nav.pts[0];
+  map.setView([start.lat, start.lng], 18, { animate: false });
+  if (SIMULATE) S.me = { ...nav.pts[0], acc: 5 };
+  onLiveUpdate();
+}
+function endNav({ arrived = false } = {}) {
+  const label = S.lastRoute?.b?.label;
+  S.live = false; nav = null; S.navPending = false;
+  clearInterval(simTimer); simTimer = null;
+  document.body.classList.remove('navigating');
+  $('#navHud').hidden = true; $('#navBottom').hidden = true;
+  navLayer?.remove(); navLayer = null;
+  if (tracker.source === 'nav') tracker.stop();
+  window.speechSynthesis?.cancel();
+  if (arrived) { toast(`You’ve arrived at ${label ?? 'your destination'} 🎉`, 5000); say(`You have arrived at ${label ?? 'your destination'}`); }
+  sheet('half');
+  updateRoute({ fit: !arrived, keepChoice: true });
+}
+/** Walk the route at about 4× walking speed (demo mode and ?simulate). */
+function startSimulation() {
+  clearInterval(simTimer);
+  let along = 0;
+  simTimer = setInterval(() => {
+    if (!nav) { clearInterval(simTimer); return; }
+    along += S.pace * 4;
+    let i = 1; while (i < nav.cum.length - 1 && nav.cum[i] < along) i++;
+    const a = nav.pts[i - 1], b = nav.pts[i], seg = nav.cum[i] - nav.cum[i - 1] || 1, t = Math.min(1, (along - nav.cum[i - 1]) / seg);
+    S.me = { lat: a.lat + t * (b.lat - a.lat), lng: a.lng + t * (b.lng - a.lng), acc: 5 };
+    placeMe(S.me);
+    onLiveUpdate();
+  }, 1000);
+}
+
 function onLiveUpdate() {
-  const r = S.lastRoute; if (!S.live || !r?.res) return;
-  map.panTo([S.me.lat, S.me.lng], { animate: true });
-  const off = Math.min(...r.latlngs.map(([lat, lng]) => distance(S.me, { lat, lng })));
-  const end = { lat: r.latlngs.at(-1)[0], lng: r.latlngs.at(-1)[1] };
-  if (distance(S.me, end) < 20) { S.live = false; if (tracker.source === 'nav') tracker.stop(); toast(`You’ve arrived at ${r.b.label} 🎉`, 4000); updateRoute({ fit: false }); return; }
-  if (off > 40) { toast('Off route — rerouting'); updateRoute({ fit: false, keepChoice: true }); }
-  else if (S.from?.type === 'me') updateRoute({ fit: false, keepChoice: true });
+  if (S.navPending && S.me) { S.navPending = false; startNav(); return; }
+  if (!S.live || !nav || !S.me) return;
+  const u = navUpdate(nav, S.me, { speak: (m) => spokenDistance(m, S.units) });
+  if (u.arrived) { endNav({ arrived: true }); return; }
+  if (u.offRoute && !SIMULATE && Date.now() - lastReroute > 6000) { // left the route: find a new one from here
+    lastReroute = Date.now();
+    say('Rerouting'); toast('Off route — finding a new way');
+    updateRoute({ fit: false, keepChoice: true });
+    if (S.lastRoute) { nav = createNav(S.lastRoute); nav.spoken.add('start'); navStep = -1; }
+    return onLiveUpdate();
+  }
+  // walker's dot: snapped onto the path when close, with an arrow showing the direction of travel
+  placeMe(u.snapped, S.me.heading ?? u.heading);
+  // route: walked part grey, the rest in the route's color
+  const { done, ahead } = splitRoute(nav, u.snapped);
+  layers.route.clearLayers();
+  navLayer = L.layerGroup([
+    L.polyline(done, { color: '#94a3b8', weight: 6, opacity: 0.8 }),
+    L.polyline(ahead, { color: '#fff', weight: 11, opacity: 0.9 }),
+    L.polyline(ahead, { color: ROUTE_COLORS[S.routeKind] ?? '#2563eb', weight: 7 }),
+    L.marker(nav.pts.at(-1), { icon: L.divIcon({ className: '', html: '<div class="numark">★</div>', iconSize: [28, 28] }), interactive: false }),
+  ]).addTo(layers.route);
+  if (navFollow) { // keep the walker in the lower part of the screen, so more of the way ahead shows
+    const h = map.getSize().y, lift = isMobile() ? h * 0.2 : h * 0.12;
+    map.panTo(map.unproject(map.project([u.snapped.lat, u.snapped.lng]).subtract([0, lift])), { animate: true, duration: 0.5 });
+  }
+  // banner
+  const kind = turnIcon(u.next);
+  $('#navIcon').innerHTML = turnSvg(kind);
+  $('#navDist').textContent = u.next.type === 'arrive' && u.toNext < 15 ? 'Arriving' : formatDistance(u.toNext, S.units);
+  $('#navText').textContent = u.next.type === 'arrive' ? shortText(u.next) : shortText(u.next);
+  const then = u.then && u.toNext < 120 ? u.then : null;
+  $('#navThen').hidden = !then;
+  if (then) $('#navThen').innerHTML = `Then <span class="nav-mini">${turnSvg(turnIcon(then))}</span> ${esc(shortText(then))}`;
+  $('#navHud').classList.toggle('soon', u.toNext < 30 && u.next.type !== 'arrive');
+  $('#navHud').classList.toggle('off', u.offBy > 25);
+  // bottom: time, distance and arrival time left
+  const min = u.remaining / S.pace / 60;
+  const arrive = new Date(Date.now() + min * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  $('#navEta').textContent = formatMinutes(min);
+  $('#navLeft').textContent = ` · ${formatDistance(u.remaining, S.units)} · arrive ${arrive}`;
+  // highlight the current step in the list
+  if (u.next.n !== navStep) {
+    navStep = u.next.n;
+    document.querySelectorAll('#routeOut .steps li').forEach((li) => li.classList.toggle('cur', +li.dataset.step === navStep));
+  }
+  if (u.say) { say(u.say); if (/^(Turn|Make|Bear)/.test(u.say)) navigator.vibrate?.(180); }
+}
+function placeMe(p, heading = null) {
+  if (!meMarker) {
+    meMarker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="me-dot"><i class="me-cone"></i></div>', iconSize: [18, 18] }), interactive: false, keyboard: false, zIndexOffset: 3000 }).addTo(layers.me);
+    meCircle = L.circle([p.lat, p.lng], { radius: S.me?.acc ?? 10, weight: 1, color: '#2563eb', fillOpacity: 0.08, interactive: false }).addTo(layers.me);
+  } else { meMarker.setLatLng([p.lat, p.lng]); meCircle.setLatLng([p.lat, p.lng]).setRadius(S.me?.acc ?? 10); }
+  const cone = meMarker.getElement()?.querySelector('.me-cone');
+  if (cone) { cone.style.display = heading == null || !S.live ? 'none' : 'block'; if (heading != null) cone.style.transform = `rotate(${heading}deg)`; }
 }
 
 // ---------------------------------------------------------------- location
@@ -829,23 +969,27 @@ function startWatch() {
   if (S.watchId != null || !navigator.geolocation) return;
   S.watchId = navigator.geolocation.watchPosition((pos) => {
     const first = !S.me;
-    S.me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+    if (simTimer) return; // a simulated walk is driving the position
+    const moving = pos.coords.speed == null || pos.coords.speed > 0.4;
+    S.me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, heading: moving && Number.isFinite(pos.coords.heading) ? pos.coords.heading : null };
     detectVisit(S.me);
     wwm?.position(S.me);
     tour?.position(S.me);
-    if (!meMarker) {
-      meMarker = L.marker([S.me.lat, S.me.lng], { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18] }), interactive: false, keyboard: false }).addTo(layers.me);
-      meCircle = L.circle([S.me.lat, S.me.lng], { radius: S.me.acc, weight: 1, color: '#2563eb', fillOpacity: 0.08, interactive: false }).addTo(layers.me);
-    } else { meMarker.setLatLng([S.me.lat, S.me.lng]); meCircle.setLatLng([S.me.lat, S.me.lng]).setRadius(S.me.acc); }
+    placeMe(S.me);
     $('#locateBtn').classList.add('active');
     if (first) {
       const far = distance(S.me, { lat: CENTER[0], lng: CENTER[1] }) > 3000;
       if (far) toast('You appear to be off campus — routes start from the nearest campus path.', 4000);
       else flyTo([S.me.lat, S.me.lng], 18);
-      if (S.from?.type === 'me' || S.to?.type === 'me') updateRoute();
+      if ((S.from?.type === 'me' || S.to?.type === 'me') && !S.navPending) updateRoute();
     }
     onLiveUpdate();
-  }, (err) => { toast(err.code === 1 ? 'Location permission denied' : 'Could not get your location'); S.watchId = null; }, { enableHighAccuracy: true, maximumAge: 5000 });
+  }, (err) => {
+    // Permission denied stops for good. Timeouts and "position unavailable" are usually a passing GPS
+    // hiccup (under trees, near buildings): the browser keeps watching, so navigation carries on.
+    if (err.code === 1) { toast('Location permission denied — turn on location for TigerPath in your settings.', 5000); navigator.geolocation.clearWatch(S.watchId); S.watchId = null; if (S.live && !simTimer) endNav(); }
+    else if (!S.me) toast('Still looking for your location…');
+  }, { enableHighAccuracy: true, maximumAge: 1000 });
 }
 function locate() { if (S.me) flyTo([S.me.lat, S.me.lng], 18); startWatch(); }
 $('#locateBtn').onclick = locate;
@@ -1357,7 +1501,7 @@ function renderReminderCard() {
   $('#remTest').onclick = async () => { if (reminders.permission === 'default') await Notification.requestPermission(); reminders.test(); };
 }
 
-window.__tigerpath = { map }; // for the browser smoke test
+window.__tigerpath = { map, route: () => S.lastRoute?.latlngs ?? null }; // for the browser tests
 
 (async function boot() {
   await loadBasemapMeta();

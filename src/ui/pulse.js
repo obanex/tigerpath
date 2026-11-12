@@ -1,22 +1,42 @@
-// Campus Pulse: the first thing on the Explore tab — what matters right now.
-// The greeting and weather sit above search (headEl); below it come the next class
-// (with a leave-by time), what's open, today's activity and this week's challenges,
-// and Walk With Me after dark.
+// The Explore page under the photo: what matters right now. The greeting, date and weather
+// sit on the photo (headEl); below come the next class (with a leave-by time), places to
+// discover, food that's open, today's steps, and Walk With Me after dark.
 
 import { upcomingClasses } from '../lib/reminders.js';
 import { openStatus, formatTime } from '../lib/hours.js';
 import { goalProgress, streak, dayKey } from '../lib/activity.js';
-import { weeklyChallenges, weekStats, challengeProgress, weekKey } from '../lib/challenges.js';
 import { describeCode, weatherAdvice, formatTemp } from '../lib/weather.js';
 import { isDarkOutside } from '../lib/sun.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-const bar = (pct) => `<span class="pbar"><span style="width:${Math.round(pct * 100)}%"></span></span>`;
+const ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
+const CUP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h11v6a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V8ZM16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2M11 3.5v2"/></svg>';
+const PLATE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M3 4v16M21 4c-2 1-2 5 0 6v10"/></svg>';
+const SHIELD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.7 3.2 8.5 7.5 10 4.3-1.5 7.5-5.3 7.5-10v-6L12 2.5ZM8.5 12l2.5 2.5 4.5-5"/></svg>';
+
+/** One Discover card (small or big): a photo when there is one, else the category color and code. */
+export function discoverCard(c, big = false) {
+  return `<button class="dcard" style="--cat:${esc(c.color)}" ${c.act ? `data-act="${esc(c.act)}"` : `data-place="${esc(c.id)}"`} aria-label="${esc(c.name)}${c.sub ? `, ${esc(c.sub)}` : ''}">
+    ${c.photo ? `<img src="${esc(c.photo)}" alt="" loading="lazy" style="object-position:${esc(c.pos ?? '50% 50%')}">` : `${c.shape ?? ''}<span class="dcode" aria-hidden="true">${esc(c.code)}</span>`}
+    ${c.chip ? `<span class="gold-chip">${esc(c.chip)}</span>` : ''}
+    <span class="dname">${esc(c.name)}${big && c.sub ? `<span class="dsub">${esc(c.sub)}</span>` : ''}</span></button>`;
+}
+/** Cards laid out three small, then two big, repeating. */
+export function discoverRows(cards) {
+  let html = '';
+  for (let i = 0; i < cards.length; i += 5) {
+    const small = cards.slice(i, i + 3), big = cards.slice(i + 3, i + 5);
+    if (small.length) html += `<div class="row3">${small.map((c) => discoverCard(c)).join('')}</div>`;
+    if (big.length) html += `<div class="row2">${big.map((c) => discoverCard(c, true)).join('')}</div>`;
+  }
+  return html;
+}
 
 /**
- * ctx: { headEl (greeting + weather), acc, buildings, byId, weather, units, now, nextClassWalk(cls) -> { minutes, fromLabel, from } | null,
- *        stepFreeToday, actions: { directionsTo(cls, from), addClasses(), walkWithMe(), signIn(), stepFreeToday(), openAccount() } }
+ * ctx: { headEl, acc, buildings, byId, weather, units, now, nextClassWalk(cls) -> { minutes, fromLabel, from } | null,
+ *        stepFreeToday, discover: [card], photoOf(id) -> { src } | null,
+ *        actions: { directionsTo(cls, from), addClasses(), walkWithMe(), signIn(), stepFreeToday(), openAccount(), tour(), openPlace(id), openAll() } }
  */
 export function renderPulse(el, ctx) {
   const { acc, weather, now = new Date() } = ctx;
@@ -26,88 +46,81 @@ export function renderPulse(el, ctx) {
   const dark = isDarkOutside(now);
   const parts = [];
 
-  // --- header + weather
-  let wx = '';
+  // --- on the photo: date + weather, greeting, and any weather advice
+  let wx = '', tip = '';
   if (weather) {
     const d = describeCode(weather.code, weather.isDay);
     const adv = weatherAdvice(weather);
-    wx = `<div class="pulse-wx"><span class="wx-now">${d.icon} ${formatTemp(weather.tempF, ctx.units)} · ${esc(d.label)}</span>
-      ${adv.tip ? `<span class="wx-tip">${esc(adv.tip)}</span>` : ''}
-      ${adv.icy && !ctx.stepFreeToday ? '<button class="btn small" data-act="stepfree">Use step-free routes today</button>' : ''}
-      ${adv.icy && ctx.stepFreeToday ? '<span class="wx-tip">✓ Step-free routes picked first today.</span>' : ''}</div>`;
+    wx = ` · ${formatTemp(weather.tempF, ctx.units)} ${d.label}`;
+    if (adv.tip) tip = `<p class="wx-tip">${esc(adv.tip)}</p>`;
+    if (adv.icy && !ctx.stepFreeToday) tip += '<button class="btn small" data-act="stepfree">Use step-free routes today</button>';
+    if (adv.icy && ctx.stepFreeToday) tip += '<p class="wx-tip">✓ Step-free routes picked first today.</p>';
   }
-  ctx.headEl.innerHTML = `<div class="greet"><div class="pulse-head"><div><h2>${greet}${name ? `, ${esc(name)}` : ''}</h2>
-    <span class="muted small">${now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</span></div></div>${wx}</div>`;
+  ctx.headEl.innerHTML = `<div class="date">${esc(now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }))}<span class="pulse-wx">${esc(wx)}</span></div>
+    <h2>${greet}${name ? `, ${esc(name)}` : ''}</h2>${tip}`;
 
-  // --- next class
+  // --- up next
   const next = upcomingClasses(acc.data.schedule, now, 36, acc.data.settings.term)[0];
+  parts.push('<h2 class="h">Up next</h2>');
   if (next) {
     const b = ctx.byId.get(next.cls.building);
     const walk = ctx.nextClassWalk(next.cls);
-    const mins = Math.round((next.start - now) / 60000);
-    const when = next.day === dayKey(now) ? (mins < 60 ? `in ${mins} min` : `at ${formatTime(hhmm(next.start))}`) : `tomorrow at ${formatTime(hhmm(next.start))}`;
+    const today = next.day === dayKey(now);
     const leaveBy = walk ? new Date(next.start - Math.ceil(walk.minutes + 2) * 60000) : null;
-    const urgent = leaveBy && leaveBy - now < 10 * 60000 && next.day === dayKey(now);
-    parts.push(`<div class="pulse-card${urgent ? ' urgent' : ''}"><span class="pc-label">Next class</span>
-      <b>${esc(next.cls.title)}</b> <span class="muted">${when}</span>
-      <div class="small">${esc(b?.name ?? next.cls.building)}${next.cls.room ? ` · Room ${esc(next.cls.room)}` : ''}</div>
-      ${walk ? `<div class="small">${Math.ceil(walk.minutes)} min walk from ${esc(walk.fromLabel)} — <b>leave by ${formatTime(hhmm(leaveBy))}</b></div>` : ''}
-      <div class="btn-row"><button class="btn small primary" data-act="nextclass">Directions</button></div></div>`);
+    const urgent = leaveBy && leaveBy - now < 10 * 60000 && today;
+    const mins = Math.round((next.start - now) / 60000);
+    const when = today ? (mins < 60 ? `in ${mins} min` : 'today') : 'tmrw';
+    parts.push(`<div class="upnext${urgent ? ' urgent' : ''}">
+      <div class="upnext-time"><b>${esc(formatTime(hhmm(next.start)))}</b><span>${when}</span></div>
+      <div class="upnext-main"><b>${esc(next.cls.title)}</b>
+        <span>${esc(b?.name ?? next.cls.building)}${next.cls.room ? ` ${esc(next.cls.room)}` : ''}${leaveBy ? ` · leave by <b style="display:inline;color:var(--fg)">${formatTime(hhmm(leaveBy))}</b>` : ''}</span></div>
+      <button class="go-btn" data-act="nextclass" aria-label="Directions to ${esc(next.cls.title)}">${ARROW}</button></div>`);
   } else {
-    parts.push(`<div class="pulse-card"><span class="pc-label">Next class</span>
-      <span class="small">Add your schedule to get leave-by times and reminders.</span>
-      <div class="btn-row"><button class="btn small" data-act="addclasses">Add classes</button></div></div>`);
+    parts.push(`<div class="empty-card">Add your schedule to get leave-by times and class reminders.
+      <div><button class="btn small primary" data-act="addclasses">Add classes</button></div></div>`);
   }
+
+  // --- discover: three small, two big
+  parts.push(`<div class="sec-h"><h2 class="h">Discover</h2><button class="see-all" data-act="all">See all</button></div>
+    <div class="discover">${discoverRows(ctx.discover)}</div>`);
 
   // --- open now (food)
   const food = ctx.buildings.filter((b) => b.category === 'dining' || b.food?.length)
     .map((b) => ({ b, st: openStatus(b.hours, now) })).filter((x) => x.st.open).slice(0, 3);
-  parts.push(`<div class="pulse-card"><span class="pc-label">Food open now</span>
-    ${food.length ? `<ul class="pulse-list">${food.map(({ b, st }) => `<li><button class="link" data-b="${esc(b.id)}">${esc(b.name)}</button><span class="small muted">${esc(st.label.replace('Open · ', ''))}</span></li>`).join('')}</ul>
-      <span class="unverified">Sample hours — check dining's site</span>` : '<span class="small">Nothing open right now.</span>'}</div>`);
+  parts.push('<h2 class="h">Open now</h2>');
+  parts.push(food.length ? `<div class="open-list">${food.map(({ b, st }) => {
+    const photo = ctx.photoOf(b.id);
+    const coffee = (b.food ?? []).some((f) => /starbucks|dunkin|caf/i.test(f));
+    return `<button class="orow" data-place="${esc(b.id)}"><span class="othumb">${photo ? `<img src="${esc(photo.src)}" alt="" loading="lazy">` : coffee ? CUP : PLATE}</span>
+      <span class="ogrow"><b>${esc(b.food?.length ? b.food.slice(0, 2).join(' · ') : b.name)}</b><span>${esc(b.food?.length ? b.name : 'Dining hall')}</span></span>
+      <span class="until">${esc(st.label.replace('Open · ', '').replace(/^closes /, 'until '))}</span></button>`;
+  }).join('')}</div>${food.some((x) => x.b.hours?.verified === false) ? '<p class="unverified">Sample hours — check dining’s site</p>' : ''}`
+    : '<p class="hint">Nothing’s open right now.</p>');
 
-  // --- activity + challenges
+  // --- today
   if (acc.user) {
     const p = goalProgress(acc.data.activity[dayKey(now)], acc.data.goals);
     const st = streak(acc.data.activity, acc.data.goals, now);
-    const ch = challengeProgress(weeklyChallenges(weekKey(now), acc.data.goals), weekStats(acc.data, now));
-    parts.push(`<div class="pulse-card"><span class="pc-label">Today</span>
-      <div class="small"><b>${p.steps.toLocaleString()}</b> / ${acc.data.goals.steps.toLocaleString()} steps ${st ? ` · 🔥 ${st}-day streak` : ''}</div>${bar(p.stepsPct)}
-      <span class="pc-label" style="margin-top:10px">This week's challenges</span>
-      <ul class="pulse-list ch">${ch.map((c) => `<li><span>${c.icon} ${esc(c.title)}</span>${c.done ? '<span class="done">✓</span>' : `<span class="small muted">${Math.floor(c.value * 10) / 10}/${c.target}</span>`}${bar(c.pct)}</li>`).join('')}</ul>
-      <button class="link-btn" data-act="account">See badges →</button></div>`);
+    const left = Math.max(0, acc.data.goals.steps - p.steps);
+    parts.push(`<div class="sec-h"><h2 class="h">Today</h2>${st ? `<span class="streak-chip">${st}-day streak</span>` : ''}</div>
+      <button class="link-btn" data-act="account" style="text-decoration:none;color:inherit;width:100%;padding:0">
+        <p class="today-steps"><b>${p.steps.toLocaleString()}</b> / ${acc.data.goals.steps.toLocaleString()} steps</p>
+        <span class="pbar"><span style="width:${Math.round(p.stepsPct * 100)}%"></span></span>
+        <span class="small muted">${left ? `${left.toLocaleString()} steps to your goal` : 'Goal reached today. Nice work!'}</span></button>`);
   } else {
-    parts.push(`<div class="pulse-card"><span class="pc-label">Challenges & badges</span>
-      <span class="small">Sign in to track your steps, take on weekly challenges and earn badges for exploring campus.</span>
-      <div class="btn-row"><button class="btn small" data-act="signin">Sign in</button></div></div>`);
+    parts.push(`<h2 class="h">Today</h2><div class="empty-card">Sign in to count your steps, take on weekly challenges and earn badges for exploring campus.
+      <div><button class="btn small primary" data-act="signin">Sign in</button></div></div>`);
   }
 
-  // --- Hall Cup
-  if (ctx.hallBoard) {
-    const rows = ctx.hallBoard.rows ?? [];
-    const top = rows.filter((r) => r.rank).slice(0, 3);
-    const mine = rows.find((r) => r.mine);
-    const medal = ['🥇', '🥈', '🥉'];
-    parts.push(`<div class="pulse-card"><span class="pc-label">🏆 Hall Cup · this week</span>
-      ${top.length ? `<ul class="pulse-list">${top.map((r, i) => `<li><span>${medal[i]} ${esc(r.name)}${r.mine ? ' <span class="rbadge q">You</span>' : ''}</span><span class="small muted">${r.avg.toLocaleString()} avg</span></li>`).join('')}</ul>`
-        : '<span class="small">No hall has 3 walkers yet this week — rally your floor!</span>'}
-      ${ctx.lastWinner ? `<span class="small">Last week: <b>${esc(ctx.lastWinner.name)}</b> won 🏆</span>` : ''}
-      ${mine && !top.includes(mine) ? `<span class="small">${esc(mine.name)}: ${mine.rank ? `#${mine.rank}` : `needs ${mine.needs} more walker${mine.needs > 1 ? 's' : ''}`}</span>` : ''}
-      ${!acc.data.settings.hall || acc.data.settings.hallCup === false ? `<button class="link-btn" data-act="${acc.user ? 'account' : 'signin'}">${acc.user ? 'Pick your hall to compete →' : 'Sign in to compete for your hall →'}</button>` : ''}</div>`);
+  // --- after dark: Walk With Me
+  if (dark) {
+    parts.push(`<button class="night-row" data-act="walk">${SHIELD}<span><b>Walk With Me</b><span>It’s dark out. Share your walk with a friend — we’ll check in if you’re running late.</span></span></button>`);
   }
 
-  // --- Self-guided tour (visitors, prospective students, families)
-  parts.push(`<div class="pulse-card"><span class="pc-label">🎒 Self-guided tour</span>
-    <span class="small">New here or showing family around? Ten stops, about 2 miles and 40 minutes of walking, at your own pace.</span>
-    <div class="btn-row"><button class="btn small" data-act="tour">Start the tour</button></div></div>`);
-
-  // --- Walk With Me
-  parts.push(`<div class="pulse-card wwm${dark ? ' dark' : ''}"><span class="pc-label">🛡️ Walk With Me</span>
-    <span class="small">${dark ? "It's dark out. Share your walk with a friend — we'll check in if you're running late." : 'Share any walk with a friend, with a safety check-in if you\'re running late.'}</span>
-    <div class="btn-row"><button class="btn small" data-act="walk">Start a safe walk</button></div></div>`);
-
-  el.innerHTML = `<section class="pulse" aria-label="Campus Pulse">${parts.join('')}</section>`;
-  el.onclick = ctx.headEl.onclick = (e) => {
+  el.innerHTML = `<section class="pulse" aria-label="Right now">${parts.join('')}</section>`;
+  const onClick = (e) => {
+    const place = e.target.closest('[data-place]')?.dataset.place;
+    if (place) { ctx.actions.openPlace(place); return; }
     const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return;
     const act = ctx.actions;
     if (a === 'nextclass') act.directionsTo(next.cls);
@@ -117,5 +130,7 @@ export function renderPulse(el, ctx) {
     else if (a === 'tour') act.tour();
     else if (a === 'stepfree') act.stepFreeToday();
     else if (a === 'account') act.openAccount();
+    else if (a === 'all') act.openAll();
   };
+  el.onclick = onClick; ctx.headEl.onclick = onClick;
 }

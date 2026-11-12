@@ -90,22 +90,24 @@ await check('Room number search (LA 4310 → floor 4)', async () => {
 await check('Building card: hours, food, amenities, accessibility, nearby', async () => {
   await open(p1, '#b=UU');
   const t = await text(p1.locator('#detail'));
-  for (const s of ['University Union', 'Open', 'FOOD HERE', 'Chick-fil-A', 'AMENITIES', 'ACCESSIBILITY', 'NEARBY']) expect(t.toUpperCase().includes(s.toUpperCase()), `missing "${s}"`);
+  for (const s of ['University Union', 'Open', 'Good to know', 'Food', 'Chick-fil-A', 'Amenities', 'Accessibility', 'Nearby']) expect(t.toUpperCase().includes(s.toUpperCase()), `missing "${s}"`);
 });
 await check('Save a favorite and see it on the home list', async () => {
   await p1.click('#favBtn'); await p1.click('#backBtn');
   const favs = await text(p1.locator('#favs')); expect(favs.includes('University Union'), favs);
 });
-await check('Category filter (Dining)', async () => {
-  await p1.click('.chip[data-c="dining"]'); const list = await text(p1.locator('#nearestOut'));
-  expect(/DINING · \d/i.test(list), list.slice(0, 60)); await p1.click('.chip[data-c="dining"]'); return list.slice(0, 50);
+await check('Category filter (Dining) on the Campus map', async () => {
+  await p1.click('#tab-campus'); await p1.click('.chip[data-c="dining"]');
+  const dim = await p1.locator('.bmark.dim').count(), lit = await p1.locator('.bmark:not(.dim)').count();
+  expect(dim > 0 && lit > 0, `dimmed ${dim}, shown ${lit}`);
+  await p1.click('.chip[data-c="dining"]'); await p1.click('#tab-explore'); return `${lit} dining shown, ${dim} faded`;
 });
 await check('Find nearest printing (from my location)', async () => {
   await p1.click('#locateBtn'); await p1.waitForTimeout(1200); await p1.click('#quick button[data-k="printing"]');
   const t = await text(p1.locator('#nearestOut')); expect(/min/.test(t), t); return t.slice(0, 70);
 });
 await check('Layers: shuttle, parking permit filter, ♿ layer + legend, satellite', async () => {
-  await p1.click('#tab-layers');
+  await p1.click('#tab-campus'); await p1.click('#layersBtn');
   await p1.check('input[data-l="shuttle"]'); await p1.check('input[data-l="access"]');
   await p1.selectOption('#permit', 'resident');
   expect(await p1.isVisible('#accessLegend'), 'no accessibility legend');
@@ -335,10 +337,11 @@ if (CLOUD) {
 
 // ============================================================ 6. Campus Pulse
 group('6. Campus Pulse');
-await check('Greeting, weather advice, next class, food open, Walk With Me', async () => {
+await check('Greeting, weather advice, next class, discover, food open', async () => {
   await p3.click('#tab-explore'); await p3.waitForSelector('.pulse-wx');
-  const t = await text(p3.locator('#view-explore')); // the greeting and weather sit above search, the rest below
-  for (const s of ['30°F', 'Snow', 'step-free', 'NEXT CLASS', 'FOOD OPEN NOW', 'WALK WITH ME']) expect(t.toUpperCase().includes(s.toUpperCase()), `missing "${s}"`);
+  const t = await text(p3.locator('#view-explore')); // the greeting and weather sit on the photo, the rest below
+  for (const s of ['30°F', 'Snow', 'step-free', 'UP NEXT', 'DISCOVER', 'OPEN NOW']) expect(t.toUpperCase().includes(s.toUpperCase()), `missing "${s}"`);
+  expect(await p3.locator('.dcard').count() === 5, 'Discover should show 5 cards');
   return t.slice(0, 80);
 });
 await check('Icy weather → step-free routes picked first', async () => {

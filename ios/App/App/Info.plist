@@ -26,6 +26,10 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo to use as your TigerPath profile picture. It stays in your account and is never shared.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo to use as your TigerPath profile picture. Only the photo you pick is used.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>While you navigate or use Walk With Me, TigerPath keeps following your walk when your phone is locked, so turn prompts and your friend’s view keep working. It stops when you end the walk.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

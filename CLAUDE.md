@@ -45,7 +45,9 @@ xcrun devicectl device install app --device <device id> build/Build/Products/Deb
   secrets exist.
 
 ## Layout (main pieces)
-- `src/main.js`: app UI, map, routing glue, navigation (`startNav`/`onLiveUpdate`), boot sequence
+- `src/main.js`: app UI, map, routing glue, navigation (`startNav`/`onLiveUpdate`), boot sequence. Layout: a bottom tab
+  bar (Explore, Campus = the map, Directions, Classes, Activity; on laptops the top of the left panel); every tab but
+  Campus is a full page. Pages opened from a tab (`place`, `all`, `account`, `tour`) keep it lit; `showTab` handles both
 - `src/lib/`: pure logic with unit tests:
   - `graph.js`: A* and profiles
   - `nav.js`: turn-by-turn
@@ -64,7 +66,8 @@ xcrun devicectl device install app --device <device id> build/Build/Products/Deb
 - Data:
   - `public/data/osm-campus.json` (OpenStreetMap, monthly workflow)
   - `public/data/tu-campus.json` (TU's public ArcGIS layers via `npm run fetch-tu`, monthly workflow)
-  - `src/data/*.js` (hand-kept buildings, places, tour text)
+  - `src/data/*.js` (hand-kept buildings, places, tour text; `photos.js`: campus photos in `public/photos/` with the
+    credits their licenses require — always show them)
 - `public/tiles/`: self-hosted map tiles (monthly workflow); `public/privacy.html`, `public/support.html`
 
 ## Backend

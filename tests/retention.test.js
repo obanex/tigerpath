@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recordVisit, weekKey, weekDays, weeklyChallenges, weekStats, challengeProgress, lifetimeStats, newBadges, BADGES } from '../src/lib/challenges.js';
+import { recordVisit, weekKey, weekDays, weeklyChallenges, weekStats, challengeProgress, lifetimeStats, newBadges, badgeProgress, BADGES } from '../src/lib/challenges.js';
 import { addActivity, dayKey } from '../src/lib/activity.js';
 import { describeCode, weatherAdvice, getWeather, formatTemp } from '../src/lib/weather.js';
 import { WalkSession, watchReducer, watchLink, parseWatch, isStale, TUPD } from '../src/lib/walkwithme.js';
@@ -46,6 +46,12 @@ test('badges', () => {
   assert.deepEqual(newBadges(data, BUILDINGS), []); // nothing twice
   assert.equal(lifetimeStats(data, BUILDINGS).bestStreak, 3);
   assert.equal(BADGES.length, new Set(BADGES.map((b) => b.id)).size);
+  // progress toward each badge, for the profile's "Next up"
+  const prog = badgeProgress(data, BUILDINGS);
+  assert.deepEqual(Object.keys(prog).sort(), BADGES.map((b) => b.id).sort());
+  assert.deepEqual(prog['streak-7'], { have: 3, need: 7, unit: 'days' });
+  assert.deepEqual(prog['explorer-15'], { have: 5, need: 15, unit: 'buildings' });
+  assert.equal(prog['streak-3'].have, 3); // earned ones stop at the target
 });
 
 test('weather: codes, advice, cache', async () => {

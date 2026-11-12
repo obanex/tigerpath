@@ -124,6 +124,21 @@ export const BADGES = [
   { id: 'hall-dynasty', icon: '👑', title: 'Dynasty', desc: 'Win the Hall Cup 3 times', test: (s) => s.hallWins >= 3 },
 ];
 
+/** How far along each badge is, from the same numbers its test uses: { id: { have, need, unit } }. */
+export function badgeProgress(data, buildings) {
+  const s = lifetimeStats(data, buildings);
+  const P = {
+    'first-steps': [s.totalSteps > 0 ? 1 : 0, 1, 'walk'], 'goal-getter': [Math.min(s.goalDays, 1), 1, 'goal day'],
+    'streak-3': [s.bestStreak, 3, 'days'], 'streak-7': [s.bestStreak, 7, 'days'], 'streak-30': [s.bestStreak, 30, 'days'],
+    'miles-10': [s.totalMiles, 10, 'miles'], 'miles-50': [s.totalMiles, 50, 'miles'], 'miles-100': [s.totalMiles, 100, 'miles'],
+    'explorer-5': [s.visited, 5, 'buildings'], 'explorer-15': [s.visited, 15, 'buildings'], 'explorer-all': [s.visited, s.allBuildings, 'buildings'],
+    foodie: [s.visitedCount(s.dining), s.dining.length, 'dining halls'], 'hall-hopper': [s.visitedCount(s.residence), 5, 'residence halls'],
+    scholar: [s.visitedCount(s.academic), 10, 'academic buildings'], champion: [s.challengeWeeks, 1, 'challenge week'],
+    buddy: [s.safeWalks, 1, 'safe walk'], 'hall-champion': [s.hallWins, 1, 'Hall Cup win'], 'hall-dynasty': [s.hallWins, 3, 'Hall Cup wins'],
+  };
+  return Object.fromEntries(Object.entries(P).map(([id, [have, need, unit]]) => [id, { have: Math.min(Math.floor(have * 10) / 10, need), need, unit }]));
+}
+
 /** Badge ids earned now but not recorded in data.badges yet. */
 export function newBadges(data, buildings) {
   const s = lifetimeStats(data, buildings);

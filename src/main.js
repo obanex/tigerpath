@@ -19,7 +19,8 @@ import { createReminders } from './ui/notify.js';
 import { createMeView } from './ui/me.js';
 import { routeOptions } from './lib/alternatives.js';
 import { isDarkOutside } from './lib/sun.js';
-import { renderPulse } from './ui/pulse.js';
+import { renderPulse, discoverRows } from './ui/pulse.js';
+import { PHOTOS, BUILDING_PHOTOS, PLACE_STORIES } from './data/photos.js';
 import { getWeather, weatherAdvice } from './lib/weather.js';
 import { createWalkWithMe, createWatchView } from './ui/walk.js';
 import { createTour } from './ui/tour.js';
@@ -91,6 +92,12 @@ const parkingById = new Map(PARKING.map((p) => [p.id, p]));
 const LEGACY_PARKING = { 'P-UG': 'P-UPG', 'P-TTG': 'P-TTPG', 'P-GG': 'P-GPG' };
 /** Short code shown on pins and lists (TU's code for buildings from TU's map). */
 const tag = (b) => b.tag ?? b.id;
+/** A photo of a place, with its credit, or null. key: a building id or a PHOTOS key. */
+function photoOf(key) {
+  const p = PHOTOS[BUILDING_PHOTOS[key] ?? key];
+  return p ? { ...p, src: `${import.meta.env.BASE_URL}photos/${p.file}` } : null;
+}
+const creditLine = (p) => `<a href="${esc(p.source)}" target="_blank" rel="noopener">${esc(p.credit)}</a> (${esc(p.license)})`;
 /** Parking as a search result: found by "parking", "garage", "visitor parking" or its name; visitor garages first. */
 const parkingSearchItem = (p) => ({
   id: p.id, name: p.name, category: 'parking', tag: 'P', parking: true,
@@ -158,11 +165,13 @@ const layers = {
 };
 const markers = new Map();
 
-/** Space the panel covers, so fitted routes stay visible. Never more than leaves 120 px of map. */
+/** Space the panel, search bar, tab bar and cards cover, so fitted places stay visible. Never more than leaves 120 px of map. */
 function padding() {
   const size = map.getSize();
-  const tl = isMobile() ? [20, 70] : [430, 30];
-  const br = isMobile() ? [20, $('#panel').offsetHeight + 20] : [70, 30];
+  let tl, br;
+  if (!isMobile()) { tl = [S.tab === 'campus' ? 30 : 430, 80]; br = [70, 30]; }
+  else if (S.tab === 'tour') { tl = [20, 70]; br = [20, $('#panel').offsetHeight + 20]; }
+  else { tl = [20, 80]; br = [20, $('.tabbar').offsetHeight + ($('#placeCard').hidden ? 70 : 290)]; }
   for (const [axis, avail] of [[0, size.x - 120], [1, size.y - 120]]) {
     const total = tl[axis] + br[axis];
     if (total > avail) { const k = Math.max(0, avail) / total; tl[axis] *= k; br[axis] *= k; }
@@ -189,7 +198,7 @@ function drawBuildings() {
   for (const b of S.buildings) {
     const m = L.marker([b.lat, b.lng], { icon: buildingIcon(b), title: b.name, alt: b.name, keyboard: true, riseOnHover: true })
       .bindTooltip(b.name, { permanent: true, direction: 'bottom', offset: [0, 14], className: 'blabel' })
-      .on('click', () => selectBuilding(b.id));
+      .on('click', () => selectBuilding(b.id, { card: true }));
     m.building = b;
     markers.set(b.id, m);
     layers.buildings.addLayer(m);
@@ -214,9 +223,11 @@ function drawParking() {
   for (const p of [...S.parking, ...osmLots]) {
     if (S.permit && !p.permits.includes(S.permit)) continue;
     if (p.outline) L.polygon(p.outline, { color: '#475569', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(layers.parking);
-    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: p.fromOsm || p.kind === 'lot' ? 'zd' : '', html: '<div class="pmark">P</div>', iconSize: [24, 24] }), title: p.name })
-      .bindPopup(parkingPopup(p))
+    const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: p.fromOsm || p.kind === 'lot' ? 'zd' : '', html: `<div class="pmark${S.place?.type === 'parking' && S.place.id === p.id ? ' sel' : ''}">P</div>`, iconSize: [24, 24] }), title: p.name, alt: p.name, keyboard: true })
+      .bindTooltip(p.name.replace(' Parking Garage', ' Garage'), { permanent: true, direction: 'bottom', offset: [0, 12], className: 'blabel' })
       .addTo(layers.parking);
+    if (p.fromOsm) m.bindPopup(parkingPopup(p)); // OpenStreetMap lots: just what OSM knows
+    else m.on('click', () => showParking(p.id));
     if (!parkingById.has(p.id)) parkingById.set(p.id, p);
   }
 }
@@ -229,15 +240,13 @@ function parkingPopup(p) {
     ${S.tu ? '<br><a href="https://www.towson.edu/parking/" target="_blank" rel="noopener">Permits &amp; rules ↗</a>' : ''}
     <div class="ctx-menu"><button data-route-to="parking:${esc(p.id)}">Directions here</button><button data-route-from="parking:${esc(p.id)}">Walk from here</button></div>`;
 }
-/** A garage or lot picked in search: fly there and open its details, even with the Parking layer off. */
+/** A garage or lot: on the Campus map, with its card (even with the Parking layer off). */
 function showParking(id) {
   const p = parkingById.get(id); if (!p) return;
-  if (S.selected) { S.selected = null; S.room = null; refreshMarkers(); renderDetail(); writeHash(); }
-  sheet('peek'); // room on the map for the details card
-  setTimeout(() => {
-    map.once('moveend', () => L.popup({ autoPanPaddingTopLeft: [12, 60] }).setLatLng([p.lat, p.lng]).setContent(parkingPopup(p)).openOn(map));
-    flyTo([p.lat, p.lng], 17);
-  }, isMobile() ? 260 : 0); // after the sheet has slid down, so the map centres in the space left
+  S.selected = null; S.room = null; refreshMarkers();
+  if (S.tab !== 'campus') showTab('campus');
+  showCard({ type: 'parking', id: p.id });
+  flyTo([p.lat, p.lng], 17);
 }
 function drawShuttles() {
   layers.shuttle.clearLayers();
@@ -274,7 +283,7 @@ function drawOutlines() {
   for (const o of S.osm?.buildings ?? []) {
     const match = o.ourId && byId.get(o.ourId);
     L.polygon(o.outline, { weight: 1, color: match ? CATEGORIES[match.category].color : '#888', fillOpacity: match ? 0.25 : 0.08, interactive: !!match })
-      .on('click', () => match && selectBuilding(match.id)).addTo(layers.outlines);
+      .on('click', () => match && selectBuilding(match.id, { card: true })).addTo(layers.outlines);
   }
 }
 // ---------------------------------------------------------------- accessibility
@@ -463,36 +472,44 @@ function walkMinutes(fromId, toId) {
 }
 
 // ---------------------------------------------------------------- tabs & sheet
-const TABS = ['explore', 'directions', 'schedule', 'activity', 'layers'];
-/** name: a tab, or 'account' (My account, opened from the header button). */
+// Five tabs: Explore, Campus (the map), Directions, Classes, Activity. Pages opened from them
+// (a place, Discover campus, your profile, the tour) keep their tab lit, and Back returns to it.
+const TABS = ['explore', 'campus', 'directions', 'schedule', 'activity'];
+const PAGES = ['explore', 'directions', 'schedule', 'activity', 'tour', 'account', 'place', 'all'];
 function showTab(name) {
-  for (const t of TABS) {
-    $(`#tab-${t}`).setAttribute('aria-selected', String(t === name));
-    $(`#view-${t}`).hidden = t !== name;
-  }
-  $('#view-account').hidden = name !== 'account';
-  $('#view-tour').hidden = name !== 'tour';
+  const prev = S.tab;
+  if (TABS.includes(name)) S.baseTab = name;
+  const lit = TABS.includes(name) ? name : S.baseTab ?? 'explore';
+  for (const t of TABS) $(`#tab-${t}`).setAttribute('aria-selected', String(t === lit));
+  for (const v of PAGES) $(`#view-${v}`).hidden = v !== name;
+  document.body.dataset.tab = name;
   map.getContainer().classList.toggle('touring', name === 'tour'); // fade regular pins so the tour stops stand out
   if (name !== 'tour') layers.tour.clearLayers();
-  $('#acctBtn').setAttribute('aria-pressed', String(name === 'account'));
-  if (name !== S.tab) $('.views').scrollTop = 0; // the tabs share one scroller: each opens at its top
+  document.querySelectorAll('.acct-btn').forEach((b) => b.setAttribute('aria-pressed', String(name === 'account')));
+  if (name !== prev) $('.views').scrollTop = 0; // the pages share one scroller: each opens at its top
   S.tab = name;
+  if (name !== 'campus') { closeCard({ keep: name === 'place' }); toggleLayers(false); }
+  if (name === 'campus' || name === 'tour') setTimeout(() => map.invalidateSize(), 0); // the map was behind a page
   if (name === 'schedule') renderSchedule();
   if (name === 'account' || name === 'activity') meView?.render();
-  if (name === 'account') sheet('full');
   if (name === 'tour') { sheet('half'); tour.start(); }
-  if (name === 'explore' && !S.selected) renderPulseNow(); // fresh next-class times and Hall Cup
-  if (name !== 'directions' && name !== 'schedule') layers.route.clearLayers();
+  if (name === 'explore') renderPulseNow(); // fresh next-class times
+  if (name === 'all') renderAll();
+  if (!['directions', 'schedule', 'campus', 'place'].includes(name)) layers.route.clearLayers();
   if (name === 'directions' && S.options) drawRoutes();
   writeHash();
 }
+const goBack = () => showTab(S.baseTab ?? 'explore');
 TABS.forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
-$('#acctBtn').addEventListener('click', () => showTab(S.tab === 'account' ? 'explore' : 'account'));
-$('.tabs').addEventListener('keydown', (e) => {
+document.addEventListener('click', (e) => { if (e.target.closest('.acct-btn')) showTab(S.tab === 'account' ? S.baseTab ?? 'explore' : 'account'); });
+$('#acctBack').onclick = goBack;
+$('#allBack').onclick = goBack;
+$('.tabbar').addEventListener('keydown', (e) => {
   if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-  const i = Math.max(0, TABS.indexOf(S.tab ?? 'explore')) + (e.key === 'ArrowRight' ? 1 : -1);
+  const i = Math.max(0, TABS.indexOf(S.baseTab ?? 'explore')) + (e.key === 'ArrowRight' ? 1 : -1);
   const t = TABS[(i + TABS.length) % TABS.length]; showTab(t); $(`#tab-${t}`).focus();
 });
+// The tour is the one screen that keeps a sheet over the map (on phones): tap or drag its handle.
 const SHEET = ['peek', 'half', 'full'];
 let sheetDragged = false;
 $('#sheetHandle').addEventListener('click', () => {
@@ -500,14 +517,13 @@ $('#sheetHandle').addEventListener('click', () => {
   const p = $('#panel'); p.dataset.sheet = SHEET[(SHEET.indexOf(p.dataset.sheet) + 1) % 3];
 });
 const sheet = (s) => { if (isMobile()) $('#panel').dataset.sheet = s; };
-$('#sheetDown').addEventListener('click', () => { sheet('peek'); $('#sheetHandle').focus(); });
-// Drag the handle or the header up and down like an iOS sheet; it settles on the nearest size,
+// Drag the handle up and down like an iOS sheet; it settles on the nearest size,
 // and a quick flick that wouldn't reach another size moves one size in its direction.
-for (const grip of [$('#sheetHandle'), $('#panel .brand')]) {
+for (const grip of [$('#sheetHandle')]) {
   let drag = null;
   grip.addEventListener('pointerdown', (e) => {
     sheetDragged = false;
-    if (!isMobile() || e.target.closest('.brand button')) return;
+    if (!isMobile() || S.tab !== 'tour') return;
     drag = { y: e.clientY, h: $('#panel').offsetHeight, t: e.timeStamp, lastY: e.clientY, lastT: e.timeStamp };
     grip.setPointerCapture(e.pointerId);
   });
@@ -620,79 +636,208 @@ function attachTypeahead(input, list, onPick, { allowMe = false } = {}) {
 }
 
 // ---------------------------------------------------------------- explore
+/** Campus map: show one category (the rest fade) and fit the map to it. */
 function renderChips() {
   const el = $('#chips');
   el.innerHTML = Object.entries(CATEGORIES).filter(([k]) => k !== 'parking')
-    .map(([k, c]) => `<button class="chip" aria-pressed="${S.category === k}" data-c="${k}">${c.icon} ${c.label}</button>`).join('');
+    .map(([k, c]) => `<button class="chip" aria-pressed="${S.category === k}" data-c="${k}"><span class="cdot" style="background:${c.color}" aria-hidden="true"></span>${c.label}</button>`).join('');
   el.onclick = (e) => {
     const c = e.target.closest('button')?.dataset.c; if (!c) return;
     S.category = S.category === c ? null : c;
     renderChips(); refreshMarkers();
-    if (S.category) {
-      const bs = S.buildings.filter((b) => b.category === S.category);
-      fitView(L.latLngBounds(bs.map((b) => [b.lat, b.lng])));
-      renderCategoryList(bs);
-    } else renderHome();
+    if (S.category) fitView(L.latLngBounds(S.buildings.filter((b) => b.category === S.category).map((b) => [b.lat, b.lng])));
   };
 }
-/** The Explore home (greeting above search, Campus Pulse below) or a building's details. */
-const showHome = (on) => { $('#home').hidden = !on; $('#greet').hidden = !on; };
-function renderCategoryList(bs) {
-  $('#detail').hidden = true; showHome(true);
-  $('#nearestOut').innerHTML = `<h2 class="h">${esc(CATEGORIES[S.category].label)} · ${bs.length}</h2><ul class="list">${bs.map((b) => {
-    const st = openStatus(b.hours);
-    return `<li><span class="code">${esc(tag(b))}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}${st.label ? `<div class="sub ${st.open ? 'status open' : 'status closed'}" style="margin:0">${esc(st.label)}</div>` : ''}</button></li>`;
-  }).join('')}</ul>`;
-}
 
-function selectBuilding(id, { room = null, fly = true } = {}) {
+const ICON = {
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>',
+  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  save: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12v17l-6-4-6 4v-17Z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7"/></svg>',
+};
+const KIND_LINE = { academic: 'an academic building', services: 'a student services building', dining: 'a dining hall', residence: 'a residence hall', athletics: 'an athletics facility', landmark: 'a campus landmark', parking: 'a parking area' };
+/** A short description: the place's story when we have one, else what it is and the main offices inside. */
+function aboutText(b) {
+  if (PLACE_STORIES[b.id]?.about) return PLACE_STORIES[b.id].about;
+  const depts = b.depts ?? [];
+  return `${b.name} is ${KIND_LINE[b.category] ?? 'part of campus'} at Towson University.`
+    + (depts.length ? ` It’s home to ${depts.slice(0, 3).join(', ')}${depts.length > 3 ? ` and ${depts.length - 3} more office${depts.length > 4 ? 's' : ''}` : ''}.` : '');
+}
+/** Minutes on foot from where you are (only when we know where you are). */
+function walkFromMe(place) {
+  if (!S.me) return null;
+  const r = computeRoute({ type: 'me' }, place, 'standard');
+  return r?.res ? formatMinutes(r.minutes) : null;
+}
+const nearestVisitorParking = (b) => S.parking.filter((p) => p.visitor).map((p) => ({ p, d: distance(b, p) })).sort((x, y) => x.d - y.d)[0];
+
+/** A building, as a page (from search, lists, links) or as a card on the Campus map ({ card: true }). */
+function selectBuilding(id, { room = null, fly = true, card = false } = {}) {
   const b = byId.get(id); if (!b) return;
-  S.selected = id; S.room = room;
+  S.selected = id; S.room = room; S.place = { type: 'building', id };
   if (document.activeElement !== $('#q')) $('#q').value = ''; // a name typed for another building would be stale
   acc.update((d) => { d.recent = [id, ...d.recent.filter((x) => x !== id)].slice(0, 6); });
   refreshMarkers();
+  if (card) {
+    if (S.tab !== 'campus') showTab('campus');
+    showCard(S.place);
+    if (fly) flyTo([b.lat, b.lng]);
+    writeHash(); return;
+  }
   if (fly) flyTo([b.lat, b.lng]);
-  if (S.tab !== 'explore') showTab('explore');
-  renderDetail(); sheet('half'); writeHash();
+  showTab('place'); renderDetail();
+}
+/** A garage or lot as a page. */
+function openParking(id) {
+  if (!parkingById.has(id)) return;
+  S.selected = null; S.room = null; S.place = { type: 'parking', id };
+  showTab('place'); renderDetail();
 }
 function renderDetail() {
-  const b = byId.get(S.selected);
   const el = $('#detail');
-  if (!b) { el.hidden = true; showHome(true); return; }
+  if (S.place?.type === 'parking') { renderParkingDetail(parkingById.get(S.place.id)); return; }
+  const b = byId.get(S.selected);
+  if (!b) { el.innerHTML = ''; return; }
   const cat = CATEGORIES[b.category];
+  const photo = photoOf(b.id);
   const st = openStatus(b.hours);
   const today = DAY_LABELS[DAYS[new Date().getDay()]];
   const fav = S.favs.includes(b.id);
+  const walk = walkFromMe({ type: 'building', id: b.id });
+  const vp = nearestVisitorParking(b);
+  const facts = [...(PLACE_STORIES[b.id]?.facts ?? []).map(([k, v]) => [k, esc(v)])];
+  if (b.tu?.address) facts.push(['Address', esc(b.tu.address)]);
+  if (b.tu?.code && b.tu.code !== b.id) facts.push(['TU code', esc(b.tu.code)]);
+  if (b.food?.length) facts.push(['Food', b.food.map(esc).join(', ')]);
+  const amen = (b.amenities ?? []).filter((a) => a !== 'food' && a !== 'accessible-entrance').map((a) => esc(AMENITY_LABELS[a] ?? a));
+  if (amen.length) facts.push(['Amenities', amen.join(', ')]);
+  if (b.hours) facts.push(['Hours', `<table class="hours">${weekTable(b.hours).map((r) => `<tr class="${r.day === today ? 'today' : ''}"><td>${r.day}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>${b.hours.verified === false ? '<span class="unverified">Sample hours — verify before you go</span>' : ''}`]);
+  if (vp) facts.push(['Visitor parking', `<button class="text-btn" style="padding:0" data-park="${esc(vp.p.id)}">${esc(vp.p.name)}</button> · ${formatDistance(vp.d, S.units)} away`]);
   el.innerHTML = `
-    <button class="back" id="backBtn">← Back</button>
-    <div class="detail-head"><span class="code" style="background:${cat.color};color:#fff;font-size:.9rem;padding:6px 8px">${esc(tag(b))}</span>
-      <div><h2>${esc(b.name)}</h2><span class="badge">${cat.icon} ${cat.label}</span></div></div>
-    ${S.room ? `<div class="room-box"><b>Room ${esc(S.room.room)}</b> · ${typeof S.room.floor === 'number' ? `Floor ${S.room.floor}` : esc(S.room.floor)}
-      <div class="sub muted">Room numbers usually start with the floor number. Elevators are near the main entrance.</div></div>` : ''}
-    ${b.note ? `<div class="room-box">⚠️ ${esc(b.note)}</div>` : ''}
-    ${st.label ? `<div class="status ${st.open ? (st.closingSoon ? 'soon' : 'open') : 'closed'}">${esc(st.label)} ${b.hours?.verified === false ? '<span class="unverified">(sample hours — verify)</span>' : ''}</div>` : ''}
-    <div class="btn-row">
-      <button class="btn primary" id="dirTo">Directions</button>
-      <button class="btn" id="dirFrom">Start here</button>
-      <button class="btn" id="favBtn" aria-pressed="${fav}">${fav ? '★ Saved' : '☆ Save'}</button>
-      <button class="btn" id="shareBtn">Share</button>
-    </div>
-    ${b.tu?.address ? `<p class="muted" style="margin:6px 0 0">${esc(b.tu.address)}</p>` : ''}
-    ${b.depts?.length ? `<h2 class="h">Inside</h2>${insideList(b)}` : ''}
-    ${b.food?.length ? `<h2 class="h">Food here</h2><div>${b.food.map((f) => `<span class="tag">🍴 ${esc(f)}</span>`).join('')}</div>` : ''}
-    ${b.amenities?.length ? `<h2 class="h">Amenities</h2><div>${b.amenities.map((a) => `<span class="tag">${esc(AMENITY_LABELS[a] ?? a)}</span>`).join('')}</div>` : ''}
-    ${b.hours ? `<h2 class="h">Hours</h2><table class="hours">${weekTable(b.hours).map((r) => `<tr class="${r.day === today ? 'today' : ''}"><td>${r.day}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>` : ''}
-    <h2 class="h">♿ Accessibility</h2>${accessCard(b)}
-    <h2 class="h">Nearby</h2><ul class="list" id="nearby"></ul>`;
-  el.hidden = false; showHome(false);
-  $('#backBtn').onclick = () => { S.selected = null; S.room = null; refreshMarkers(); renderDetail(); renderHome(); writeHash(); };
+    <div class="place-hero" style="--cat:${cat.color}">
+      ${photo ? `<img src="${esc(photo.src)}" alt="${esc(photo.alt)}" style="object-position:${esc(photo.pos)}">` : `<span class="pcode" aria-hidden="true">${esc(tag(b))}</span>`}
+      <button class="round-btn" id="backBtn" aria-label="Back">${ICON.back}</button></div>
+    <div class="place-body">
+      <div class="kicker">${esc(cat.label)}</div>
+      <h2 class="pname">${esc(b.name)}</h2>
+      ${walk ? `<p class="muted" style="margin:0">${esc(walk)} walk from you</p>` : ''}
+      ${st.label ? `<div class="status ${st.open ? (st.closingSoon ? 'soon' : 'open') : 'closed'}">${esc(st.label)}${b.hours?.verified === false ? ' <span class="unverified">(sample hours)</span>' : ''}</div>` : ''}
+      ${S.room ? `<div class="room-box"><b>Room ${esc(S.room.room)}</b> · ${typeof S.room.floor === 'number' ? `Floor ${S.room.floor}` : esc(S.room.floor)}
+        <div class="small muted">Room numbers usually start with the floor number. Elevators are near the main entrance.</div></div>` : ''}
+      ${b.note ? `<div class="room-box">⚠️ ${esc(b.note)}</div>` : ''}
+      <div class="place-actions">
+        <button class="btn primary big" id="dirTo">Directions</button>
+        <button class="round" id="favBtn" aria-pressed="${fav}" aria-label="${fav ? 'Saved' : 'Save'}" title="${fav ? 'Saved' : 'Save'}">${ICON.save}</button>
+        <button class="round" id="shareBtn" aria-label="Share" title="Share">${ICON.share}</button>
+      </div>
+      <button class="text-btn" id="dirFrom">Start directions from here</button>
+      <p class="about-text">${esc(aboutText(b))}</p>
+      ${b.depts?.length ? `<h3 class="h">Inside · ${b.depts.length}</h3>${insideList(b)}` : ''}
+      ${facts.length ? `<h3 class="h">Good to know</h3><dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
+      <h3 class="h">♿ Accessibility</h3>${accessCard(b)}
+      <h3 class="h">Nearby</h3><ul class="list" id="nearby"></ul>
+      ${photo ? `<p class="photo-credit">Photo: ${creditLine(photo)}, via Wikimedia Commons</p>` : ''}
+    </div>`;
+  $('#backBtn').onclick = () => { S.selected = null; S.room = null; S.place = null; refreshMarkers(); goBack(); };
   $('#dirTo').onclick = () => { setPlace('to', { type: 'building', id: b.id }); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
   $('#dirFrom').onclick = () => { setPlace('from', { type: 'building', id: b.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
-  $('#favBtn').onclick = () => { acc.update((d) => { d.favs = fav ? d.favs.filter((x) => x !== b.id) : [...d.favs, b.id]; }); renderDetail(); };
+  $('#favBtn').onclick = () => { acc.update((d) => { d.favs = fav ? d.favs.filter((x) => x !== b.id) : [...d.favs, b.id]; }); toast(fav ? 'Removed from saved places' : 'Saved'); renderDetail(); };
   $('#shareBtn').onclick = () => share(shareUrl(), b.name);
   $('#stepFree').onclick = () => { S.requestedKind = 'stepfree'; $('#dirTo').click(); };
   const near = S.buildings.filter((x) => x.id !== b.id).map((x) => ({ x, d: distance(b, x) })).sort((p, q) => p.d - q.d).slice(0, 4);
   $('#nearby').innerHTML = near.map(({ x, d }) => `<li><span class="code">${esc(tag(x))}</span><button class="link" data-b="${esc(x.id)}">${esc(x.name)}</button><span class="muted">${formatDistance(d, S.units)}</span></li>`).join('');
+}
+function renderParkingDetail(p) {
+  const el = $('#detail');
+  if (!p) { el.innerHTML = ''; return; }
+  const n = (x) => (typeof x === 'number' ? x.toLocaleString() : '');
+  const garage = p.kind === 'garage';
+  const walk = walkFromMe({ type: 'parking', id: p.id });
+  const facts = [['Type', garage ? 'Parking garage' : 'Parking lot'], ['Spaces', p.spaces ? n(p.spaces) : 'See signage'],
+    ['Visitor spaces', p.visitor ? (typeof p.visitor === 'number' ? `${n(p.visitor)} (pay)` : 'Yes (pay)') : 'None'],
+    ['Permits', p.permits.map((x) => PERMIT_LABELS[x] ?? x).join(', ') || 'See signage'],
+    ['EV charging', p.ev ? (typeof p.ev === 'number' ? `${p.ev} spaces` : 'Yes') : 'None'],
+    ['Accessible spaces', p.accessible ? (typeof p.accessible === 'number' ? n(p.accessible) : 'Yes') : 'None'],
+    ...(p.code ? [['TU code', p.code]] : []), ...(p.address ? [['Address', p.address]] : [])];
+  el.innerHTML = `
+    <div class="place-hero" style="--cat:#334155"><span class="pcode" aria-hidden="true">P</span>
+      <button class="round-btn" id="backBtn" aria-label="Back">${ICON.back}</button></div>
+    <div class="place-body">
+      <div class="kicker">${garage ? 'Parking garage' : 'Parking lot'}</div>
+      <h2 class="pname">${esc(p.name)}</h2>
+      ${walk ? `<p class="muted" style="margin:0">${esc(walk)} walk from you</p>` : ''}
+      <div class="place-actions"><button class="btn primary big" id="dirTo">Directions</button>
+        <button class="round" id="shareBtn" aria-label="Share" title="Share">${ICON.share}</button></div>
+      <button class="text-btn" id="dirFrom">Walk from here</button>
+      <p class="about-text">${esc(p.name)} is a ${garage ? 'parking garage' : 'parking lot'}${p.spaces ? ` with ${n(p.spaces)} spaces` : ''}.
+        ${p.visitor ? 'Visitors can park here and pay.' : 'It’s for permit holders, so visitors should use a garage with visitor spaces.'}</p>
+      <h3 class="h">Good to know</h3><dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+      ${p.note ? `<p class="hint">${esc(p.note)}</p>` : ''}
+      ${S.tu ? '<p class="hint"><a href="https://www.towson.edu/parking/" target="_blank" rel="noopener">Permits &amp; parking rules on towson.edu ↗</a></p>' : ''}
+    </div>`;
+  $('#backBtn').onclick = () => { S.place = null; goBack(); };
+  $('#dirTo').onclick = () => { setPlace('to', { type: 'parking', id: p.id }); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
+  $('#dirFrom').onclick = () => { setPlace('from', { type: 'parking', id: p.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
+  $('#shareBtn').onclick = () => share(shareUrl(), p.name);
+}
+
+/** The card for a building or parking you tapped on the Campus map. */
+function showCard(place) {
+  const el = $('#placeCard');
+  const b = place.type === 'building' ? byId.get(place.id) : null, p = place.type === 'parking' ? parkingById.get(place.id) : null;
+  if (!b && !p) return;
+  S.place = place;
+  const photo = b ? photoOf(b.id) : null;
+  const walk = walkFromMe(place);
+  const kind = b ? CATEGORIES[b.category].label : p.kind === 'garage' ? 'Parking garage' : 'Parking lot';
+  const teaser = b ? aboutText(b) : `${p.spaces ? `${p.spaces.toLocaleString()} spaces` : 'Parking'}${p.visitor ? ` · ${typeof p.visitor === 'number' ? `${p.visitor} visitor spaces (pay)` : 'visitor parking'}` : ' · permit holders'}`;
+  el.innerHTML = `${photo ? `<img src="${esc(photo.src)}" alt="${esc(photo.alt)}" style="object-position:${esc(photo.pos)}">` : ''}
+    <div class="pc-body"><div class="pc-top"><div class="grow"><b>${esc(b?.name ?? p.name)}</b><span>${esc(kind)}${walk ? ` · ${esc(walk)} walk` : ''}</span></div>
+      <button class="round-btn" id="cardClose" aria-label="Close">${ICON.close}</button></div>
+      <p class="pc-teaser">${esc(teaser.length > 150 ? teaser.split('. ')[0] + '.' : teaser)}</p>
+      <div class="pc-actions"><button class="btn primary" id="cardDir">Directions</button><button class="btn outline" id="cardMore">Details</button></div></div>`;
+  el.hidden = false;
+  if (p) drawParking(); // highlight the lot
+  $('#cardClose').onclick = () => closeCard();
+  $('#cardDir').onclick = () => { setPlace('to', place); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
+  $('#cardMore').onclick = () => (b ? selectBuilding(b.id, { fly: false }) : openParking(p.id));
+}
+function closeCard({ keep = false } = {}) {
+  const el = $('#placeCard'); if (!el || el.hidden) return;
+  el.hidden = true;
+  if (keep) return; // opening the place's page: it stays selected
+  const wasLot = S.place?.type === 'parking';
+  S.place = null; S.selected = null; S.room = null; refreshMarkers();
+  if (wasLot) drawParking();
+  writeHash();
+}
+map.on('click', () => { if (S.tab === 'campus') closeCard(); });
+
+// ---------------------------------------------------------------- Discover campus (every building)
+const CAT_ORDER = ['academic', 'services', 'dining', 'residence', 'athletics', 'landmark'];
+/** A building's real footprint, drawn small (cards without a photo show the building's shape). */
+function footprintSvg(id) {
+  const o = outlines.get(id); if (!o?.length) return '';
+  const k = Math.cos(o[0][0] * Math.PI / 180);
+  const xs = o.map((p) => p[1] * k), ys = o.map((p) => -p[0]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const s = 80 / Math.max(x1 - x0, y1 - y0, 1e-9), ox = 10 + (80 - (x1 - x0) * s) / 2, oy = 10 + (80 - (y1 - y0) * s) / 2;
+  const d = xs.map((x, i) => `${i ? 'L' : 'M'}${((x - x0) * s + ox).toFixed(1)} ${((ys[i] - y0) * s + oy).toFixed(1)}`).join('');
+  return `<svg class="dshape" viewBox="0 0 100 100" aria-hidden="true"><path d="${d}Z"/></svg>`;
+}
+function discoverCardFor(b, extra = {}) {
+  const ph = photoOf(b.id);
+  return { id: b.id, name: b.name, code: tag(b), color: CATEGORIES[b.category]?.color ?? '#2563eb', photo: ph?.src, pos: ph?.pos, shape: ph ? '' : footprintSvg(b.id), sub: CATEGORIES[b.category]?.label, ...extra };
+}
+function renderAll() {
+  const list = S.buildings.filter((b) => !b.extra && (!S.allFilter || b.category === S.allFilter))
+    .sort((x, y) => !!photoOf(y.id) - !!photoOf(x.id) || CAT_ORDER.indexOf(x.category) - CAT_ORDER.indexOf(y.category) || x.name.localeCompare(y.name));
+  $('#allCount').textContent = `${list.length} building${list.length === 1 ? '' : 's'}${S.allFilter ? ` · ${CATEGORIES[S.allFilter].label}` : ''}`;
+  $('#allFilters').innerHTML = [[null, 'All'], ...CAT_ORDER.map((k) => [k, CATEGORIES[k].label])]
+    .map(([k, label]) => `<button class="chip" aria-pressed="${(S.allFilter ?? null) === k}" data-c="${k ?? ''}">${esc(label)}</button>`).join('');
+  $('#allFilters').onclick = (e) => { const c = e.target.closest('[data-c]'); if (!c) return; S.allFilter = c.dataset.c || null; renderAll(); };
+  $('#allGrid').innerHTML = discoverRows(list.map((b) => discoverCardFor(b)));
+  $('#allGrid').onclick = (e) => { const id = e.target.closest('[data-place]')?.dataset.place; if (id) selectBuilding(id); };
 }
 
 /** Offices and departments in a building; TU's ones link to their pages. Long lists fold away. */
@@ -739,6 +884,16 @@ function renderHome() {
       <button class="btn small" data-go='${esc(JSON.stringify({ type: 'building', id: home.id }))}'>Directions home</button></li>` : '')
     + (S.favs.map(li).join('') || (home ? '' : '<li class="muted">Tap ☆ on a building to save it, or set your home in My account.</li>'));
   $('#recent').innerHTML = S.recent.map(li).join('') || '<li class="muted">Nothing yet.</li>';
+  const shown = ['stephens-sun', ...EXPLORE_DISCOVER.map(([id]) => BUILDING_PHOTOS[id] ?? (id === 'TOUR' ? 'stephens-hall' : null))].filter(Boolean);
+  $('#photoCredits').innerHTML = `Photos via Wikimedia Commons: ${[...new Set(shown)].map((k) => `${esc(PHOTOS[k].alt.split(',')[0])}, ${creditLine(PHOTOS[k])}`).join('; ')}.`;
+}
+/** Explore's Discover cards: three small, then two big (the tour first). */
+const EXPLORE_DISCOVER = [['AR'], ['UU'], ['GA'], ['TOUR'], ['US']];
+function exploreDiscover() {
+  return EXPLORE_DISCOVER.map(([id]) => {
+    if (id === 'TOUR') { const ph = photoOf('stephens-hall'); return { id, act: 'tour', name: 'Self-guided tour', sub: 'About 40 min at your pace', chip: '10 stops', photo: ph.src, pos: ph.pos, color: '#111', code: '' }; }
+    const b = byId.get(id); return b && discoverCardFor(b, id === 'US' ? { sub: 'Home of Tigers football' } : {});
+  }).filter(Boolean);
 }
 
 const QUICK = [
@@ -774,7 +929,8 @@ function findNearest(q) {
     : '<p class="hint">Nothing matches right now.</p>');
 }
 document.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-b]'); if (b) { selectBuilding(b.dataset.b); return; }
+  const b = e.target.closest('[data-b]'); if (b) { map.closePopup(); selectBuilding(b.dataset.b, { card: S.tab === 'campus' }); return; }
+  const pk = e.target.closest('[data-park]'); if (pk) { openParking(pk.dataset.park); return; }
   const go = e.target.closest('[data-go]');
   if (go) {
     const origin = S.me ? { type: 'me' } : S.selected ? { type: 'building', id: S.selected } : null;
@@ -847,6 +1003,7 @@ function selectRoute(kind) {
 function updateRoute({ fit = true, keepChoice = false } = {}) {
   const out = $('#routeOut');
   writeHash();
+  $('#routePreview').hidden = true;
   if (!S.from || !S.to) { S.lastRoute = null; S.options = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">Choose where you’re starting and where you’re going. Tip: right-click or long-press the map to drop a pin.</p>'; return; }
   if (S.from.type === 'me' && !S.me) { out.innerHTML = '<p class="hint">Waiting for your location…</p>'; return; }
   const fastest = computeRoute(S.from, S.to, 'standard');
@@ -861,12 +1018,38 @@ function updateRoute({ fit = true, keepChoice = false } = {}) {
   const sel = optionFor(want) ?? S.options[0];
   S.routeKind = sel.kind; S.lastRoute = sel.r;
   drawRoutes();
-  if (fit) {
-    const bounds = L.latLngBounds(S.options.flatMap((o) => o.r.latlngs));
-    if (isMobile() && $('#panel').dataset.sheet === 'full') { sheet('half'); setTimeout(() => fitView(bounds), 300); } // after the panel slides down
-    else fitView(bounds);
-  }
+  if (fit && (!isMobile() || S.tab === 'campus')) fitView(L.latLngBounds(S.options.flatMap((o) => o.r.latlngs))); // phones: the preview shows it; the map fits on "Show on map"
   renderRouteOut();
+}
+
+/** A small drawing of the route (and the buildings around it) at the top of Directions. */
+function renderRoutePreview() {
+  const el = $('#routePreview');
+  const sel = S.options?.find((o) => o.kind === S.routeKind);
+  if (!sel) { el.hidden = true; return; }
+  const all = S.options.flatMap((o) => o.r.latlngs);
+  const lats = all.map((p) => p[0]), lngs = all.map((p) => p[1]);
+  const k = Math.cos(lats[0] * Math.PI / 180);
+  let [la0, la1, ln0, ln1] = [Math.min(...lats), Math.max(...lats), Math.min(...lngs), Math.max(...lngs)];
+  const W = 340, H = 170, pad = 18;
+  const s = Math.min((W - 2 * pad) / Math.max((ln1 - ln0) * k, 1e-6), (H - 2 * pad) / Math.max(la1 - la0, 1e-6));
+  const cx = (ln0 + ln1) / 2, cy = (la0 + la1) / 2;
+  const X = (lng) => (W / 2 + (lng - cx) * k * s).toFixed(1), Y = (lat) => (H / 2 - (lat - cy) * s).toFixed(1);
+  const line = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${X(b)} ${Y(a)}`).join('');
+  [la0, la1, ln0, ln1] = [cy - H / 2 / s, cy + H / 2 / s, cx - W / 2 / k / s, cx + W / 2 / k / s];
+  const blds = [...outlines].filter(([, o]) => o.some(([a, b]) => a > la0 && a < la1 && b > ln0 && b < ln1))
+    .map(([id, o]) => `<path d="${line(o)}Z" fill="${CATEGORIES[byId.get(id)?.category]?.color ?? '#888'}" fill-opacity=".22" stroke="${CATEGORIES[byId.get(id)?.category]?.color ?? '#888'}" stroke-opacity=".5" stroke-width="1"/>`).join('');
+  const others = S.options.filter((o) => o !== sel).map((o) => `<path d="${line(o.r.latlngs)}" fill="none" stroke="#94a3b8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+  const r = sel.r.latlngs, end = r.at(-1);
+  el.innerHTML = `<div class="route-preview"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Map of the route to ${esc(sel.r.b.label)}">
+      ${blds}${others}
+      <path d="${line(r)}" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${line(r)}" fill="none" stroke="${ROUTE_COLORS[sel.kind]}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${X(r[0][1])}" cy="${Y(r[0][0])}" r="6" fill="#fff" stroke="#111" stroke-width="3"/>
+      <circle cx="${X(end[1])}" cy="${Y(end[0])}" r="8" fill="#111" stroke="#ffbb00" stroke-width="3"/></svg>
+    <button class="btn small" id="routeOnMap">Show on map</button></div>`;
+  el.hidden = false;
+  $('#routeOnMap').onclick = () => { showTab('campus'); drawRoutes(); setTimeout(() => fitView(L.latLngBounds(all)), 50); };
 }
 
 function renderRouteOut() {
@@ -878,7 +1061,7 @@ function renderRouteOut() {
     <div class="route-opts" role="radiogroup" aria-label="Route options">
       ${S.options.map((o) => `<button class="ropt" role="radio" aria-checked="${o === sel}" data-k="${o.kind}" style="--rc:${ROUTE_COLORS[o.kind]}">
         <span class="ropt-top"><b>${formatMinutes(o.minutes)}</b><span class="ropt-name">${o.icon} ${esc(o.label)}</span></span>
-        <span class="ropt-meta">${formatDistance(o.r.res.dist, S.units)} · ${o.stairs ? `${o.stairs} stair segment${o.stairs > 1 ? 's' : ''}` : 'no stairs'}${o.via ? ` · via ${esc(o.via)}` : ''}</span>
+        <span class="ropt-meta">${formatDistance(o.r.res.dist, S.units)} · ${o.stairs ? `${o.stairs} set${o.stairs > 1 ? 's' : ''} of stairs` : 'no stairs'}${o.via ? ` · via ${esc(o.via)}` : ''}</span>
         ${o.badges.length ? `<span class="ropt-badges">${o.badges.map((b) => `<span class="rbadge${b === 'Quickest' ? ' q' : ''}">${esc(b)}</span>`).join('')}</span>` : ''}
       </button>`).join('')}
     </div>
@@ -886,12 +1069,15 @@ function renderRouteOut() {
     <div class="summary"><span class="big">${formatMinutes(r.minutes)}</span><span class="muted">${formatDistance(r.res.dist, S.units)} · arrive ${arrive}</span></div>
     ${sel.stairs && stepfree ? `<p class="hint">⚠️ Includes stairs (red dashes). The ${esc(stepfree.label.toLowerCase())} option avoids them.</p>` : ''}
     ${S.wantStepFree && !optionFor('stepfree') ? `<p class="hint">♿ No step-free route found${S.to?.type === 'building' ? ` to ${esc(byId.get(S.to.id)?.name)}` : ''}. ${S.tu ? 'TU’s accessibility survey lists no accessible entrance or step-free path there. ' : ''}Accessibility &amp; Disability Services can help: <a href="tel:+14107042638">410-704-2638</a>.</p>` : ''}
-    <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ End' : '▶ Start'}</button><button class="btn" id="wwmBtn">🛡️ Walk With Me</button><button class="btn" id="shareRoute">Share</button><button class="btn" id="printRoute">Print</button></div>
+    <div class="btn-row"><button class="btn small" id="shareRoute">Share</button><button class="btn small" id="printRoute">Print</button></div>
+    <h2 class="h">Steps</h2>
     <ol class="steps">${r.steps.map((s, i) => `<li data-step="${i}"><span class="ico">${s.type === 'arrive' ? '★' : s.type === 'depart' ? '●' : /left/.test(s.text) ? '↰' : /right/.test(s.text) ? '↱' : '↑'}</span>
       <span>${esc(s.text)}</span><span class="d">${s.dist ? formatDistance(s.dist, S.units) : ''}</span></li>`).join('')}</ol>
-    ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : `<p class="hint">Walkway data © OpenStreetMap contributors.${S.tu && sel.kind === 'stepfree' ? ' Accessibility data: Towson University campus map (preliminary).' : ''}</p>`}`;
+    ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : `<p class="hint">Walkway data © OpenStreetMap contributors.${S.tu && sel.kind === 'stepfree' ? ' Accessibility data: Towson University campus map (preliminary).' : ''}</p>`}
+    <div class="page-actions"><button class="btn primary big" id="liveBtn">${S.live ? '■ End' : '▶ Start'}</button><button class="btn big ghost" id="wwmBtn">🛡️ Walk With Me</button></div>`;
+  renderRoutePreview();
   out.querySelector('.route-opts').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) selectRoute(k); };
-  $('#routeOut .steps').onclick = (e) => { const li = e.target.closest('[data-step]'); if (li) { const s = r.steps[+li.dataset.step]; flyTo([s.at.lat, s.at.lng], 19); } };
+  $('#routeOut .steps').onclick = (e) => { const li = e.target.closest('[data-step]'); if (!li) return; const s = r.steps[+li.dataset.step]; if (isMobile()) showTab('campus'); drawRoutes(); setTimeout(() => flyTo([s.at.lat, s.at.lng], 19), 50); };
   $('#shareRoute').onclick = () => share(shareUrl(), `Walk to ${r.b.label}`);
   $('#printRoute').onclick = () => window.print();
   $('#liveBtn').onclick = toggleLive;
@@ -963,7 +1149,7 @@ function beginNav() {
   S.live = true; nav = createNav(S.lastRoute); navStep = -1; navFollow = true;
   document.body.classList.add('navigating');
   $('#navHud').hidden = false; $('#navBottom').hidden = false; $('#navRecenter').hidden = true;
-  sheet('peek');
+  setTimeout(() => map.invalidateSize(), 0); // the map was behind the Directions page
   tracker.start('nav').catch(() => {}); // keeps the screen on; walks count toward goals when signed in
   if (isNative && !SIMULATE) startBackgroundLocation({ message: `Navigating to ${S.lastRoute?.b?.label ?? 'your destination'}`, onFix: onPosition }); // keeps going with the phone locked
   renderRouteOut();
@@ -983,7 +1169,6 @@ function endNav({ arrived = false } = {}) {
   stopBackgroundLocation();
   window.speechSynthesis?.cancel();
   if (arrived) { toast(`You’ve arrived at ${label ?? 'your destination'} 🎉`, 5000); say(`You have arrived at ${label ?? 'your destination'}`); }
-  sheet('half');
   updateRoute({ fit: !arrived, keepChoice: true });
 }
 /** Walk the route at about 4× walking speed (demo mode and ?simulate). */
@@ -1185,6 +1370,11 @@ function drawDay(plan) {
   lastDayFit = key;
 }
 function initScheduleForm() {
+  $('#addClassBtn').onclick = () => {
+    $('#addClass').open = true;
+    $('#addClass').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    $('#cTitle').focus({ preventScroll: true });
+  };
   $('#cBldg').innerHTML = [...S.buildings].sort((a, b) => a.name.localeCompare(b.name))
     .filter((b) => b.category !== 'landmark').map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${esc(tag(b))})</option>`).join('');
   $('#cDays').innerHTML = WEEKDAYS.map((d) => `<label><input type="checkbox" value="${d}" />${DAY_LABELS[d]}</label>`).join('');
@@ -1294,11 +1484,13 @@ function writeHash() {
   const p = new URLSearchParams();
   if (S.tab === 'directions') { if (S.from) p.set('from', encPlace(S.from)); if (S.to) p.set('to', encPlace(S.to)); if (S.routeKind && S.routeKind !== preferredKind()) p.set('route', S.routeKind); }
   else if (S.tab === 'schedule') { p.set('tab', 'classes'); p.set('day', S.day); }
-  else if (S.tab === 'layers') p.set('tab', 'layers');
   else if (S.tab === 'account') p.set('tab', 'account');
   else if (S.tab === 'activity') p.set('tab', 'activity');
+  else if (S.tab === 'all') p.set('tab', 'all');
   else if (S.tab === 'tour') p.set('tour', String(tour.index + 1));
-  else if (S.selected) { p.set('b', S.selected); if (S.room) p.set('room', S.room.room); }
+  else if (S.place?.type === 'parking' && ['place', 'campus'].includes(S.tab)) p.set('park', S.place.id);
+  else if (S.selected && ['place', 'campus'].includes(S.tab)) { p.set('b', S.selected); if (S.room) p.set('room', S.room.room); }
+  if (S.tab === 'campus') p.set('tab', 'campus');
   const h = p.toString();
   history.replaceState(null, '', location.pathname + location.search + (h ? '#' + h : ''));
 }
@@ -1319,23 +1511,41 @@ function readHash() {
     } else if (p.get('tab') === 'classes') {
       if (WEEKDAYS.includes(p.get('day'))) S.day = p.get('day');
       showTab('schedule');
-    } else if (p.get('tab') === 'layers') showTab('layers');
+    } else if (p.get('tab') === 'layers') { showTab('campus'); toggleLayers(true); }
     else if (p.get('tab') === 'account' || p.get('tab') === 'me') showTab('account');
     else if (p.get('tab') === 'activity') showTab('activity');
+    else if (p.get('tab') === 'all') showTab('all');
+    else if (p.has('park') && parkingById.has(p.get('park'))) { if (p.get('tab') === 'campus') showParking(p.get('park')); else openParking(p.get('park')); }
     else if (p.has('b') && byId.has(p.get('b'))) {
       const room = p.get('room') ? search(index, `${p.get('b')} ${p.get('room')}`)[0]?.room : null;
-      selectBuilding(p.get('b'), { room });
-    } else showTab('explore');
+      selectBuilding(p.get('b'), { room, card: p.get('tab') === 'campus' });
+    } else if (p.get('tab') === 'campus') showTab('campus');
+    else showTab('explore');
   } finally { applyingHash = false; }
 }
 
-// ---------------------------------------------------------------- search box (explore)
+// ---------------------------------------------------------------- search: Explore (opens the page) and the Campus map (shows it there)
 attachTypeahead($('#q'), $('#qResults'), (it) => {
   if (it.type === 'me') { locate(); return; }
-  $('#q').value = ''; $('#q').blur(); // the keyboard would cover the card
-  if (it.type === 'parking') { showParking(it.id); return; }
+  $('#q').value = ''; $('#q').blur(); // the keyboard would cover the page
+  if (it.type === 'parking') { openParking(it.id); return; }
   selectBuilding(it.id, { room: it.room ?? null });
 });
+attachTypeahead($('#mapQ'), $('#mapQResults'), (it) => {
+  if (it.type === 'me') { locate(); return; }
+  $('#mapQ').value = ''; $('#mapQ').blur();
+  if (it.type === 'parking') { showParking(it.id); return; }
+  selectBuilding(it.id, { room: it.room ?? null, card: true });
+});
+/** The Campus map's Layers panel. */
+function toggleLayers(open = $('#layersPanel').hidden) {
+  $('#layersPanel').hidden = !open;
+  $('#layersBtn').setAttribute('aria-expanded', String(open));
+  if (open) closeCard();
+}
+$('#layersBtn').onclick = () => toggleLayers();
+$('#layersClose').onclick = () => { toggleLayers(false); $('#layersBtn').focus(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#layersPanel').hidden) { toggleLayers(false); $('#layersBtn').focus(); } });
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); showTab('explore'); $('#q').focus(); }
 });
@@ -1427,8 +1637,11 @@ function nextClassWalk(cls) {
 function renderPulseNow() {
   const el = $('#pulse'); if (!el || !acc.backend) return;
   renderPulse(el, {
-    headEl: $('#greet'), acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk, hallBoard: hallBoard(), lastWinner: S.lastWinner,
+    headEl: $('#greet'), acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk,
+    discover: exploreDiscover(), photoOf: (id) => photoOf(id),
     actions: {
+      openPlace: (id) => (parkingById.has(id) ? openParking(id) : selectBuilding(id)),
+      openAll: () => showTab('all'),
       directionsTo: (cls) => { const w = nextClassWalk(cls); setPlace('from', w?.from ?? (S.me ? { type: 'me' } : null)); setPlace('to', { type: 'building', id: cls.building }); showTab('directions'); },
       addClasses: () => { showTab('schedule'); $('#addClass').open = true; },
       signIn: () => meView.showWelcome(),
@@ -1440,7 +1653,7 @@ function renderPulseNow() {
   });
 }
 async function loadWeather() {
-  try { S.weather = await getWeather(); if (!S.selected) renderPulseNow(); } catch { /* offline or blocked: Pulse just skips weather */ }
+  try { S.weather = await getWeather(); if (S.tab === 'explore') renderPulseNow(); } catch { /* offline or blocked: Pulse just skips weather */ }
 }
 
 // ---------------------------------------------------------------- visits, badges, challenges
@@ -1502,7 +1715,7 @@ async function loadHallBoard() {
   if (!cloud()) return;
   try { S.hallRaw = { week: weekKey(), rows: await acc.backend.leaderboard(weekKey()) }; }
   catch (e) { S.hallRaw = { week: weekKey(), rows: S.hallRaw?.rows ?? [], error: e.message }; }
-  if (!S.selected && S.tab === 'explore') renderPulseNow();
+  if (S.tab === 'explore') renderPulseNow();
   if (S.tab === 'account' || S.tab === 'activity') meView.render();
 }
 /**
@@ -1516,7 +1729,7 @@ async function checkHallChampion() {
     const ranked = rankRows(await acc.backend.leaderboard(lastWeek), { names: TEAM_NAMES });
     const winner = winnerOf(ranked);
     S.lastWinner = winner && { ...winner, week: lastWeek };
-    if (!S.selected && S.tab === 'explore') renderPulseNow();
+    if (S.tab === 'explore') renderPulseNow();
     if (!winner) return;
     let announced = null; try { announced = localStorage.getItem('tigerpath.hallAnnounced'); } catch { /* ignore */ }
     let won = false;
@@ -1607,17 +1820,22 @@ async function initAccounts() {
     walkCache.clear();
     if (S.tab === 'account' || S.tab === 'activity') meView.render();
     if (S.tab === 'schedule') renderSchedule();
-    if (!S.selected) renderHome();
+    renderHome();
     renderReminderCard();
     renderAvatar(); applyTheme();
   });
   renderAvatar();
 }
+/** Your picture (or initials) on every profile button. */
 function renderAvatar() {
-  const a = $('#acctAvatar');
-  if (acc.user) { a.textContent = acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase(); a.className = 'initials'; }
-  else { a.textContent = '👤'; a.className = ''; }
-  $('#acctBtn').title = acc.user ? `My account (${acc.user.name})` : 'My account (guest)';
+  const pic = acc.data.settings.avatar;
+  const initials = acc.user ? acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() : null;
+  for (const a of [$('#acctAvatar'), ...document.querySelectorAll('.acct-face')]) {
+    if (pic) { a.innerHTML = `<img src="${esc(pic)}" alt="">`; a.classList.remove('initials'); }
+    else { a.textContent = initials ?? '👤'; a.classList.toggle('initials', !!initials); }
+  }
+  const title = acc.user ? `My account (${acc.user.name})` : 'My account (guest)';
+  document.querySelectorAll('.acct-btn').forEach((b) => { b.title = title; });
 }
 /** Apply a preference the student just changed in My account. */
 function onPrefs(key) {
@@ -1677,7 +1895,7 @@ window.__tigerpath = { map, route: () => S.lastRoute?.latlngs ?? null }; // for 
   buildGraph();
   await initAccounts();
   initNative({ // iPhone app: resume → refresh steps, reminders, Hall Cup; tapped notification → open its directions
-    onResume: () => { syncPhoneSteps(); reminders.sync(); loadHallBoard(); if (!S.selected && S.tab === 'explore') renderPulseNow(); },
+    onResume: () => { syncPhoneSteps(); reminders.sync(); loadHallBoard(); if (S.tab === 'explore') renderPulseNow(); },
     onOpenUrl: (hash) => { location.hash = hash; },
   });
   syncPhoneSteps(); reminders.sync();

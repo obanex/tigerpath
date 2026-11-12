@@ -1,7 +1,7 @@
 // "Me" tab: account, daily goals, activity tracking and history.
 
 import { goalProgress, streak, lastDays, dayKey, METERS_PER_MILE } from '../lib/activity.js';
-import { BADGES, weeklyChallenges, weekStats, challengeProgress, weekKey } from '../lib/challenges.js';
+import { BADGES, badgeProgress, weeklyChallenges, weekStats, challengeProgress, weekKey } from '../lib/challenges.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmtInt = (n) => Math.round(n).toLocaleString();
@@ -160,9 +160,74 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
       <ul class="pulse-list ch">${ch.map((c) => `<li><span>${c.icon} ${esc(c.title)}</span>${c.done ? '<span class="done">✓</span>' : `<span class="small muted">${Math.floor(c.value * 10) / 10}/${c.target}</span>`}
         <span class="pbar"><span style="width:${Math.round(c.pct * 100)}%"></span></span></li>`).join('')}</ul>
       <p class="hint">New challenges every Monday. Buildings count as visited when you're there with location on — ${visited} of ${buildings.length} so far.</p>
-      <h3 class="h">Badges · ${earned.length} of ${BADGES.length}</h3>
-      <ul class="badges">${BADGES.map((b) => { const on = d.badges?.[b.id];
-        return `<li class="${on ? 'on' : ''}" title="${esc(b.desc)}"><span class="bicon" aria-hidden="true">${on ? b.icon : '🔒'}</span><b>${esc(b.title)}</b><span>${esc(b.desc)}</span></li>`; }).join('')}</ul>`;
+      <button class="link-btn" data-to="account">🏅 Badges · ${earned.length} of ${BADGES.length} — see them in your profile →</button>`;
+  }
+
+  /** Badges in the profile: earned ones in gold, the closest ones to earn next, tap one for what it takes. */
+  function badgesSection() {
+    const d = acc.data, prog = badgeProgress(d, buildings);
+    const earned = BADGES.filter((b) => d.badges?.[b.id]);
+    const fmt = (p) => `${Number.isInteger(p.have) ? p.have : p.have.toFixed(1)} of ${p.need} ${p.unit}`;
+    const next = BADGES.filter((b) => !d.badges?.[b.id]).map((b) => ({ b, p: prog[b.id] }))
+      .filter(({ p }) => p.need > 0 && p.have > 0).sort((x, y) => y.p.have / y.p.need - x.p.have / x.p.need).slice(0, 2);
+    return `<div class="sec-h"><h3 class="h">Badges</h3><span class="badge-count">${earned.length} of ${BADGES.length}</span></div>
+      <span class="pbar"><span style="width:${Math.round((earned.length / BADGES.length) * 100)}%"></span></span>
+      ${next.length ? `<div class="next-up"><span class="small muted"><b>Next up</b></span>${next.map(({ b, p }) => `<div class="next-badge">
+        <span class="medal" aria-hidden="true">${b.icon}</span><div class="grow"><b>${esc(b.title)}</b><span>${esc(fmt(p))}</span>
+        <span class="pbar"><span style="width:${Math.round((p.have / p.need) * 100)}%"></span></span></div></div>`).join('')}</div>` : ''}
+      <ul class="badge-grid badges">${BADGES.map((b) => { const on = d.badges?.[b.id];
+        return `<li class="${on ? 'on' : ''}"><button data-badge="${esc(b.id)}" aria-expanded="false" aria-controls="badgeInfo" aria-label="${esc(b.title)}: ${on ? 'earned' : esc(fmt(prog[b.id]))}">
+          <span class="medal${on ? ' on' : ''}"><span class="micon" aria-hidden="true">${b.icon}</span>${on ? '' : '<span class="lock" aria-hidden="true">🔒</span>'}</span>
+          <b class="bname">${esc(b.title)}</b></button></li>`; }).join('')}</ul>
+      <div id="badgeInfo" aria-live="polite"></div>`;
+  }
+  function bindBadges(root) {
+    const d = acc.data, prog = badgeProgress(d, buildings);
+    root.querySelectorAll('[data-badge]').forEach((btn) => { btn.onclick = () => {
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      root.querySelectorAll('[data-badge]').forEach((x) => x.setAttribute('aria-expanded', 'false'));
+      const info = root.querySelector('#badgeInfo');
+      if (!open) { info.innerHTML = ''; return; }
+      btn.setAttribute('aria-expanded', 'true');
+      const b = BADGES.find((x) => x.id === btn.dataset.badge), p = prog[b.id], on = d.badges?.[b.id];
+      info.innerHTML = `<div class="badge-info"><span class="medal${on ? ' on' : ''}" aria-hidden="true">${b.icon}</span>
+        <div><b>${esc(b.title)}</b><span>${esc(b.desc)}</span></div><span class="st">${on ? 'Earned' : `${p.have} of ${p.need}`}</span></div>`;
+    }; });
+  }
+
+  /** Your picture (or initials) with a camera badge; choosing a photo crops it square and keeps it small. */
+  function profileHead(name, sub) {
+    const pic = acc.data.settings.avatar;
+    const initials = acc.user ? acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() : '👤';
+    return `<div class="profile-head">
+      <label class="avatar-xl" for="avatarIn" title="Change your picture">${pic ? `<img src="${esc(pic)}" alt="Your profile picture">` : `<span aria-hidden="true">${esc(initials)}</span>`}
+        <span class="cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-9Z"/><circle cx="12" cy="13" r="3.2"/></svg></span></label>
+      <h2>${esc(name)}</h2><span class="muted small">${esc(sub)}</span>
+      <div class="photo-actions"><label class="btn primary">${pic ? 'Change photo' : 'Add a photo'}<input type="file" accept="image/*" class="file-input" id="avatarIn"></label>
+        ${pic ? '<button class="btn" id="avatarRemove">Remove</button>' : ''}</div></div>`;
+  }
+  function squareThumb(file, size = 192) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const s = Math.min(img.naturalWidth, img.naturalHeight);
+        const c = Object.assign(document.createElement('canvas'), { width: size, height: size });
+        c.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+        URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file isn’t a picture TigerPath can read.')); };
+      img.src = url;
+    });
+  }
+  function bindAvatar(root) {
+    const input = root.querySelector('#avatarIn');
+    input.onchange = async () => {
+      const file = input.files?.[0]; if (!file) return;
+      try { const pic = await squareThumb(file); acc.update((d) => { d.settings.avatar = pic; }); toast('Profile picture updated'); }
+      catch (ex) { toast(ex.message); }
+    };
+    const rm = root.querySelector('#avatarRemove');
+    if (rm) rm.onclick = () => { acc.update((d) => { d.settings.avatar = null; }); toast('Profile picture removed'); };
   }
 
   function bindPrefs(root) {
@@ -181,28 +246,30 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
   function accountView() {
     if (!acc.user) {
       el.innerHTML = `
-        <div class="me-head"><div class="avatar big" aria-hidden="true">👤</div><div class="grow"><h2 class="me-title">Guest</h2>
-          <span class="muted small">Your settings are saved on this device.</span></div></div>
+        ${profileHead('Guest', 'Your settings are saved on this device.')}
         <button class="btn primary wide" id="openWelcome">Sign in or create an account</button>
-        <ul class="perks"><li>🎯 Daily step and mile goals</li><li>🏆 Compete for your hall in the Hall Cup</li><li>☁️ Your classes and settings on all your devices</li></ul>
+        <ul class="perks"><li>🎯 Daily step and mile goals</li><li>🏅 Badges for exploring campus</li><li>🏆 Compete for your hall in the Hall Cup</li><li>☁️ Your classes and settings on all your devices</li></ul>
         ${preferences()}${about}`;
       el.querySelector('#openWelcome').onclick = showWelcome;
-      bindPrefs(el);
+      bindPrefs(el); bindAvatar(el);
       return;
     }
-    const initials = acc.user.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+    const d = acc.data;
     el.innerHTML = `
-      <div class="me-head"><div class="avatar big" aria-hidden="true">${esc(initials)}</div>
-        <div class="grow"><h2 class="me-title">${esc(acc.user.name)}</h2><span class="muted small">${esc(acc.user.email)}</span></div>
-        <button class="btn small" id="signOut">Sign out</button></div>
-      <button class="link-btn" id="toActivity">👟 Your steps, challenges, Hall Cup and badges are in the Activity tab →</button>
+      ${profileHead(acc.user.name, acc.user.email)}
+      <div class="stat3"><div><b>${streak(d.activity, d.goals)}</b><span>day streak</span></div>
+        <div><b>${Object.keys(d.visits ?? {}).length}</b><span>places visited</span></div>
+        <div><b>${BADGES.filter((b) => d.badges?.[b.id]).length}</b><span>badges</span></div></div>
+      ${badgesSection()}
+      <button class="link-btn" id="toActivity">👟 Steps, challenges and the Hall Cup are in Activity →</button>
       ${preferences()}
       <details class="card"><summary>⚙️ Account & data</summary>
         <p class="hint">${acc.backend.kind === 'cloud' ? 'Synced to your TigerPath cloud account.' : 'Saved on this device.'}</p>
         <div class="btn-row"><button class="btn" id="exportData">Download my data</button><button class="btn danger" id="deleteAcct">Delete account</button></div>
         <p class="hint">Deleting removes your login and everything saved with it, immediately.</p>
-      </details>${about}`;
-    bindPrefs(el);
+      </details>
+      <button class="btn wide danger" id="signOut">Sign out</button>${about}`;
+    bindPrefs(el); bindAvatar(el); bindBadges(el);
     el.querySelector('#toActivity').onclick = () => onNavigate('activity');
     el.querySelector('#signOut').onclick = async () => { if (tracker.running) tracker.stop(); await acc.signOut(); toast('Signed out'); };
     el.querySelector('#exportData').onclick = () => {
@@ -222,7 +289,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
   // ---------------------------------------------------------------- Activity tab
   function activityGuest() {
     actEl.innerHTML = `
-      <h2 class="me-title">Activity</h2>
+      <h2 class="sr-only">Activity</h2>
       <p class="small">Track your walks around campus, hit daily goals, take on weekly challenges, collect badges and help your hall win the Hall Cup.</p>
       <button class="btn primary wide" id="actSignIn">Sign in to start</button>
       ${hallCupSection({ readOnly: true })}
@@ -321,6 +388,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
       const goalsOpen = actEl.querySelector('#goalCard')?.open;
       if (acc.user) activitySignedIn(); else activityGuest();
       if (goalsOpen && actEl.querySelector('#goalCard')) actEl.querySelector('#goalCard').open = true;
+      actEl.querySelectorAll('[data-to]').forEach((b) => { b.onclick = () => onNavigate(b.dataset.to); });
     }
     if (!typing(el)) {
       const prefsOpen = el.querySelector('#prefCard')?.open;

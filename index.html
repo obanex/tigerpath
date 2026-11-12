@@ -9,135 +9,187 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
 </head>
-<body>
-  <a class="skip" href="#map">Skip to map</a>
+<body data-tab="explore">
+  <a class="skip" href="#main-content">Skip to content</a>
+
+  <!-- the five places in the app, always in thumb reach (on laptops: the top of the panel) -->
+  <nav class="tabbar" aria-label="TigerPath"><div class="tablist" role="tablist" aria-label="Sections">
+    <button role="tab" id="tab-explore" aria-controls="view-explore" aria-selected="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20h-5v-5h-6v5H4v-8.5Z"/></svg><span>Explore</span></button>
+    <button role="tab" id="tab-campus" aria-controls="map" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20V6.5ZM9 4v13.5M15 6.5V20"/></svg><span>Campus</span></button>
+    <button role="tab" id="tab-directions" aria-controls="view-directions" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12 12 2.5ZM9 14v-3h5m-2-2 2 2-2 2"/></svg><span>Directions</span></button>
+    <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5h13A2 2 0 0 1 20.5 7v11a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2ZM3.5 10h17M8 3v4M16 3v4"/></svg><span>Classes</span></button>
+    <button role="tab" id="tab-activity" aria-controls="view-activity" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><span>Activity</span></button>
+  </div></nav>
 
   <aside id="panel" class="panel" data-sheet="half" aria-label="TigerPath">
     <button class="sheet-handle" id="sheetHandle" aria-label="Resize panel"><span></span></button>
-    <header class="brand">
-      <div class="logo" aria-hidden="true">TU</div>
-      <div><h1 id="appTitle" tabindex="-1">TU TigerPath</h1><p>Towson University campus map</p></div>
-      <button class="sheet-down" id="sheetDown" title="Show map" aria-label="Show map"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <button class="acct-btn" id="acctBtn" title="My account" aria-label="My account"><span id="acctAvatar" aria-hidden="true">👤</span></button>
-    </header>
-
-    <nav class="tabs" role="tablist">
-      <button role="tab" id="tab-explore" aria-controls="view-explore" aria-selected="true">Explore</button>
-      <button role="tab" id="tab-directions" aria-controls="view-directions" aria-selected="false">Directions</button>
-      <button role="tab" id="tab-schedule" aria-controls="view-schedule" aria-selected="false">Classes</button>
-      <button role="tab" id="tab-activity" aria-controls="view-activity" aria-selected="false">Activity</button>
-      <button role="tab" id="tab-layers" aria-controls="view-layers" aria-selected="false">Layers</button>
-    </nav>
-
-    <div class="views">
+    <div class="views" id="main-content" tabindex="-1">
       <!-- EXPLORE -->
       <section id="view-explore" role="tabpanel" aria-labelledby="tab-explore">
-        <div id="greet"></div>
-        <div class="search">
-          <input id="q" type="search" placeholder="Search buildings, offices, rooms…" aria-label="Search buildings, departments, or rooms" autocomplete="off"
-                 role="combobox" aria-expanded="false" aria-controls="qResults" aria-autocomplete="list" />
-          <ul id="qResults" class="results" role="listbox" hidden></ul>
+        <div class="hero">
+          <img id="heroImg" src="photos/stephens-sun.jpg" alt="Stephens Hall with the tiger statue in front" />
+          <div class="hero-top">
+            <div class="hero-brand"><span class="logo" aria-hidden="true">TU</span><h1 id="appTitle" tabindex="-1">TigerPath</h1></div>
+            <button class="acct-btn" id="acctBtn" title="My account" aria-label="My account"><span id="acctAvatar" aria-hidden="true">👤</span></button>
+          </div>
+          <div id="greet" class="hero-greet"></div>
         </div>
-        <div id="chips" class="chips" aria-label="Filter by category"></div>
-        <div id="detail" hidden></div>
-        <div id="home">
-          <div id="pulse"></div>
-          <h2 class="h">Find nearest</h2>
-          <div class="quick" id="quick"></div>
-          <div id="nearestOut"></div>
-          <h2 class="h">Saved places</h2>
-          <ul id="favs" class="list"><li class="muted">Tap ☆ on a building to save it.</li></ul>
-          <h2 class="h">Recent</h2>
-          <ul id="recent" class="list"><li class="muted">Nothing yet.</li></ul>
+        <div class="page-body over-hero">
+          <div class="search hero-search">
+            <input id="q" type="search" placeholder="Where do you want to go?" aria-label="Search buildings, departments, food or parking" autocomplete="off"
+                   role="combobox" aria-expanded="false" aria-controls="qResults" aria-autocomplete="list" />
+            <ul id="qResults" class="results" role="listbox" hidden></ul>
+          </div>
+          <div id="home">
+            <div id="pulse"></div>
+            <h2 class="h">Near you</h2>
+            <div class="quick" id="quick"></div>
+            <div id="nearestOut"></div>
+            <h2 class="h">Saved places</h2>
+            <ul id="favs" class="list"><li class="muted">Tap Save on a building to keep it here.</li></ul>
+            <h2 class="h">Recent</h2>
+            <ul id="recent" class="list"><li class="muted">Nothing yet.</li></ul>
+            <p class="credits" id="photoCredits"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- A BUILDING OR PARKING: opened from search, Discover, the map card or a link -->
+      <section id="view-place" aria-label="Place details" hidden>
+        <div id="detail"></div>
+      </section>
+
+      <!-- DISCOVER CAMPUS: every building, in the Discover card format -->
+      <section id="view-all" aria-labelledby="allTitle" hidden>
+        <header class="page-head with-back">
+          <button class="round-btn" id="allBack" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg></button>
+          <div><h1 id="allTitle">Discover campus</h1><p class="muted" id="allCount"></p></div>
+        </header>
+        <div class="page-body">
+          <div class="chips scroll" id="allFilters" role="group" aria-label="Show only"></div>
+          <div id="allGrid" class="discover"></div>
         </div>
       </section>
 
       <!-- DIRECTIONS -->
       <section id="view-directions" role="tabpanel" aria-labelledby="tab-directions" hidden>
-        <div class="dir-form">
-          <div class="field place-field"><label for="from">From</label>
-            <input id="from" placeholder="Building or 📍 My location" autocomplete="off" />
-            <ul class="results" hidden></ul></div>
-          <button class="icon-btn swap" id="swapBtn" aria-label="Swap start and destination" title="Swap">⇅</button>
-          <div class="field place-field"><label for="to">To</label>
-            <input id="to" placeholder="Building, room, or department" autocomplete="off" />
-            <ul class="results" hidden></ul></div>
-        </div>
-        <div id="routeOut" aria-live="polite"></div>
-      </section>
-
-      <!-- SCHEDULE -->
-      <section id="view-schedule" role="tabpanel" aria-labelledby="tab-schedule" hidden>
-        <div class="seg days" id="dayPicker" role="radiogroup" aria-label="Day"></div>
-        <div id="dayPlan"></div>
-        <details class="card" id="addClass">
-          <summary id="classFormTitle">＋ Add a class</summary>
-          <form id="classForm">
-            <div class="field"><label for="cTitle">Course</label><input id="cTitle" required placeholder="e.g. COSC 236" /></div>
-            <div class="row">
-              <div class="field"><label for="cBldg">Building</label><select id="cBldg" required></select></div>
-              <div class="field small"><label for="cRoom">Room</label><input id="cRoom" placeholder="4310" /></div>
-            </div>
-            <fieldset class="field"><legend>Days</legend><div class="daychecks" id="cDays"></div></fieldset>
-            <div class="row">
-              <div class="field"><label for="cStart">Starts</label><input id="cStart" type="time" required value="09:30" /></div>
-              <div class="field"><label for="cEnd">Ends</label><input id="cEnd" type="time" required value="10:45" /></div>
-            </div>
-            <div class="btn-row"><button class="btn primary" type="submit" id="classSubmit">Add class</button>
-              <button class="btn" type="button" id="classCancel" hidden>Cancel</button></div>
-          </form>
-        </details>
-        <details class="card" id="reminderCard" open>
-          <summary>🔔 Class reminders</summary>
-          <div class="rem-body"></div>
-        </details>
-        <details class="card">
-          <summary>📅 Export to calendar</summary>
-          <div class="row">
-            <div class="field"><label for="termStart">First day</label><input id="termStart" type="date" /></div>
-            <div class="field"><label for="termEnd">Last day</label><input id="termEnd" type="date" /></div>
+        <header class="page-head"><h1>Directions</h1><button class="acct-btn" data-acct aria-label="My account"><span class="acct-face" aria-hidden="true">👤</span></button></header>
+        <div class="page-body">
+          <div class="dir-form">
+            <div class="field place-field"><label for="from">From</label>
+              <input id="from" placeholder="Building or 📍 My location" autocomplete="off" />
+              <ul class="results" hidden></ul></div>
+            <button class="icon-btn swap" id="swapBtn" aria-label="Swap start and destination" title="Swap">⇅</button>
+            <div class="field place-field"><label for="to">To</label>
+              <input id="to" placeholder="Building, room, or department" autocomplete="off" />
+              <ul class="results" hidden></ul></div>
           </div>
-          <button class="btn" id="icsBtn">Download .ics</button>
-          <p class="hint">Works with Google Calendar, Apple Calendar and Outlook. Each event includes the building, room and a reminder at your chosen time.</p>
-        </details>
+          <div id="routePreview" hidden></div>
+          <div id="routeOut" aria-live="polite"></div>
+        </div>
       </section>
 
-      <!-- ACTIVITY: steps, tracking, Hall Cup, challenges, badges, goals -->
+      <!-- CLASSES -->
+      <section id="view-schedule" role="tabpanel" aria-labelledby="tab-schedule" hidden>
+        <header class="page-head"><h1>Classes</h1><button class="acct-btn" data-acct aria-label="My account"><span class="acct-face" aria-hidden="true">👤</span></button></header>
+        <div class="page-body">
+          <div class="seg days" id="dayPicker" role="radiogroup" aria-label="Day"></div>
+          <div id="dayPlan"></div>
+          <details class="card" id="addClass">
+            <summary id="classFormTitle">＋ Add a class</summary>
+            <form id="classForm">
+              <div class="field"><label for="cTitle">Course</label><input id="cTitle" required placeholder="e.g. COSC 236" /></div>
+              <div class="row">
+                <div class="field"><label for="cBldg">Building</label><select id="cBldg" required></select></div>
+                <div class="field small"><label for="cRoom">Room</label><input id="cRoom" placeholder="4310" /></div>
+              </div>
+              <fieldset class="field"><legend>Days</legend><div class="daychecks" id="cDays"></div></fieldset>
+              <div class="row">
+                <div class="field"><label for="cStart">Starts</label><input id="cStart" type="time" required value="09:30" /></div>
+                <div class="field"><label for="cEnd">Ends</label><input id="cEnd" type="time" required value="10:45" /></div>
+              </div>
+              <div class="btn-row"><button class="btn primary" type="submit" id="classSubmit">Add class</button>
+                <button class="btn" type="button" id="classCancel" hidden>Cancel</button></div>
+            </form>
+          </details>
+          <details class="card" id="reminderCard" open>
+            <summary>🔔 Class reminders</summary>
+            <div class="rem-body"></div>
+          </details>
+          <details class="card">
+            <summary>📅 Export to calendar</summary>
+            <div class="row">
+              <div class="field"><label for="termStart">First day</label><input id="termStart" type="date" /></div>
+              <div class="field"><label for="termEnd">Last day</label><input id="termEnd" type="date" /></div>
+            </div>
+            <button class="btn" id="icsBtn">Download .ics</button>
+            <p class="hint">Works with Google Calendar, Apple Calendar and Outlook. Each event includes the building, room and a reminder at your chosen time.</p>
+          </details>
+          <div class="page-actions"><button class="btn primary big" id="addClassBtn">＋ Add a class</button></div>
+        </div>
+      </section>
+
+      <!-- ACTIVITY: steps, tracking, Hall Cup, challenges, goals -->
       <section id="view-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
-        <div id="actOut"></div>
+        <header class="page-head"><h1>Activity</h1><button class="acct-btn" data-acct aria-label="My account"><span class="acct-face" aria-hidden="true">👤</span></button></header>
+        <div class="page-body"><div id="actOut"></div></div>
       </section>
 
-      <!-- SELF-GUIDED TOUR -->
+      <!-- SELF-GUIDED TOUR: a sheet over the map -->
       <section id="view-tour" aria-label="Self-guided campus tour" hidden>
         <div id="tourOut"></div>
       </section>
 
-      <!-- MY ACCOUNT (opened from the header button) -->
-      <section id="view-account" aria-label="My account" hidden>
-        <div id="meOut"></div>
-      </section>
-
-      <!-- LAYERS -->
-      <section id="view-layers" role="tabpanel" aria-labelledby="tab-layers" hidden>
-        <h2 class="h">Base map</h2>
-        <div class="seg" id="basemaps" role="radiogroup" aria-label="Base map"></div>
-        <h2 class="h">Show on map</h2>
-        <div id="layerToggles" class="toggles"></div>
-        <div id="accessLegend" hidden></div>
-        <div class="field"><label for="permit">Parking permit</label>
-          <select id="permit"><option value="">All permits</option></select></div>
-        <p class="hint" id="shuttleNote"></p>
-        <p class="hint" id="dataNote"></p>
+      <!-- PROFILE (opened from your picture) -->
+      <section id="view-account" aria-labelledby="acctTitle" hidden>
+        <header class="page-head with-back">
+          <button class="round-btn" id="acctBack" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg></button>
+          <div><h1 id="acctTitle">Profile</h1></div>
+        </header>
+        <div class="page-body"><div id="meOut"></div></div>
       </section>
     </div>
   </aside>
   <!-- after the panel in the page, so the keyboard reaches search and tabs before ~100 map pins -->
   <div id="map" role="application" aria-label="Campus map. Every place on it can also be found with search."></div>
 
-  <div class="map-ctrls">
-    <button class="fab" id="locateBtn" title="Show my location" aria-label="Show my location">◎</button>
-    <button class="fab" id="resetBtn" title="Recenter campus" aria-label="Recenter on campus">⌂</button>
+  <!-- CAMPUS: search on top, categories and the place you tapped at the bottom -->
+  <div class="campus-top" id="campusTop" role="search" aria-label="Search the campus map">
+    <div class="search map-search">
+      <input id="mapQ" type="search" placeholder="Search campus" aria-label="Search the campus map: buildings, offices, food or parking" autocomplete="off"
+             role="combobox" aria-expanded="false" aria-controls="mapQResults" aria-autocomplete="list" />
+      <ul id="mapQResults" class="results" role="listbox" hidden></ul>
+    </div>
+    <button class="map-btn" id="layersBtn" aria-label="Map layers" aria-expanded="false" aria-controls="layersPanel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5ZM3 13l9 5 9-5M3 17.5l9 5 9-5"/></svg></button>
   </div>
+  <div id="layersPanel" class="layers-panel" role="dialog" aria-labelledby="layersTitle" hidden>
+    <div class="layers-head"><h2 id="layersTitle">Map layers</h2>
+      <button class="round-btn" id="layersClose" aria-label="Close map layers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="seg" id="basemaps" role="radiogroup" aria-label="Base map"></div>
+    <div id="layerToggles" class="toggles"></div>
+    <div id="accessLegend" hidden></div>
+    <div class="field"><label for="permit">Parking permit</label>
+      <select id="permit"><option value="">All permits</option></select></div>
+    <p class="hint" id="shuttleNote"></p>
+    <p class="hint" id="dataNote"></p>
+  </div>
+  <section class="campus-bottom" id="campusBottom" aria-label="Campus map: categories and the place you picked">
+    <div id="chips" class="chips scroll" role="group" aria-label="Show only"></div>
+    <div id="placeCard" class="place-card" role="region" aria-label="Selected place" hidden></div>
+  </section>
+
+  <section class="map-ctrls" aria-label="Map controls">
+    <button class="fab" id="locateBtn" title="Show my location" aria-label="Show my location">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4 4 11l7 2 2 7 7-16Z"/></svg></button>
+    <button class="fab" id="resetBtn" title="Recenter campus" aria-label="Recenter on campus">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20h-5v-5h-6v5H4v-8.5Z"/></svg></button>
+  </section>
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <div id="banner" role="alert" hidden></div>
   <div id="walkBar" role="status" hidden></div>

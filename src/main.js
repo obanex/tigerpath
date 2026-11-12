@@ -28,6 +28,7 @@ import { recordVisit, newBadges, BADGES, weeklyChallenges, weekStats, challengeP
 import { teamOptions, rankRows, previousWeek, winnerOf, isChampion } from './lib/leaderboard.js';
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
 import { tagGraph, addTuRoutes, mergeBuildings, activeConstruction } from './lib/tu.js';
+import { DemoBackend } from './lib/demo.js';
 
 const CENTER = [39.3925, -76.6110];
 
@@ -55,6 +56,9 @@ const store = {
 };
 const isMobile = () => matchMedia('(max-width: 760px)').matches;
 const EDIT = new URLSearchParams(location.search).has('edit');
+// Demo mode: ?demo (or #demo) shows a sample student; nothing is saved anywhere.
+if (location.hash === '#demo') location.replace(`${location.pathname}?demo`);
+const DEMO = new URLSearchParams(location.search).has('demo');
 
 // ---------------------------------------------------------------- state
 const S = {
@@ -911,7 +915,7 @@ function drawDay(plan) {
 }
 function initScheduleForm() {
   $('#cBldg').innerHTML = [...S.buildings].sort((a, b) => a.name.localeCompare(b.name))
-    .filter((b) => b.category !== 'landmark').map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${esc(b.id)})</option>`).join('');
+    .filter((b) => b.category !== 'landmark').map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${esc(tag(b))})</option>`).join('');
   $('#cDays').innerHTML = WEEKDAYS.map((d) => `<label><input type="checkbox" value="${d}" />${DAY_LABELS[d]}</label>`).join('');
   $('#classForm').onsubmit = (e) => {
     e.preventDefault();
@@ -1261,7 +1265,11 @@ function startWatching(w) {
   });
 }
 async function initAccounts() {
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  if (DEMO) {
+    acc.backend = new DemoBackend({ buildings: S.buildings, halls: TEAMS.map((t) => t.id).filter((id) => id !== 'COMMUTE') });
+    acc.signOut = async () => { location.href = location.pathname; }; // "Sign out" leaves the demo
+    document.body.insertAdjacentHTML('beforeend', `<div id="demoBar" role="status"><b>Demo</b> · sample student Jordan · nothing is saved <a href="${location.pathname}">Exit demo</a></div>`);
+  } else if (SUPABASE_URL && SUPABASE_ANON_KEY) {
     const { createClient } = await import('@supabase/supabase-js');
     acc.backend = new SupabaseBackend(createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
   } else acc.backend = new LocalBackend();

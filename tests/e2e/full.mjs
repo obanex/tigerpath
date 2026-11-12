@@ -381,6 +381,42 @@ await check('Editor: download accessibility.js', async () => {
 });
 
 // ============================================================ 8b. Self-guided tour
+group('8c. Demo mode');
+{
+  const ctx = await newCtx({ ...devices['iPhone 13'] }, 'demo');
+  const cloudCalls = []; ctx.on('request', (r) => { if (/supabase/.test(r.url())) cloudCalls.push(r.url()); });
+  const p = await ctx.newPage();
+  await check('#demo opens a sample student with no sign-up', async () => {
+    await p.goto(BASE + '#demo'); await p.waitForSelector('.bmark', { state: 'attached', timeout: 20000 }); await p.waitForTimeout(1200);
+    expect(p.url().includes('?demo'), p.url());
+    expect(!(await p.locator('#welcome').isVisible()), 'welcome screen shown');
+    const bar = await text(p.locator('#demoBar')); expect(/nothing is saved/.test(bar), bar);
+    const home = await text(p.locator('#home')); expect(/Jordan/.test(home) && /day streak/.test(home), home.slice(0, 120));
+    return home.slice(0, 70);
+  });
+  await check('Demo: classes, activity, badges and a Hall Cup with a champion', async () => {
+    await p.click('#tab-schedule'); await p.waitForTimeout(400);
+    await p.click('#dayPicker button[data-v="mon"]').catch(() => {});
+    const classes = await p.locator('.class-item').count();
+    await p.click('#tab-activity'); await p.waitForTimeout(500);
+    const act = await text(p.locator('#actOut'));
+    expect(/day streak/.test(act) && /champion: Glen Towers/.test(act), act.slice(0, 160));
+    expect(await p.locator('#pHall').inputValue() === 'GT', 'hall not set');
+    const badges = await p.locator('.badges li.on').count();
+    expect(badges >= 3, `${badges} badges`);
+    return `${classes} classes today · ${badges} badges · Glen Towers champion`;
+  });
+  await check('Demo saves nothing: no cloud calls, no guest data written', async () => {
+    const keys = await p.evaluate(() => Object.keys(localStorage));
+    expect(!keys.includes('tigerpath.guest'), keys.join(','));
+    expect(cloudCalls.length === 0, `${cloudCalls.length} cloud requests`);
+    await p.click('#demoBar a'); await p.waitForSelector('.bmark', { state: 'attached' }); await p.waitForTimeout(600);
+    expect(!p.url().includes('demo') && await p.locator('#welcome').isVisible(), 'exit demo did not return to the welcome screen');
+    return 'exit → welcome screen';
+  });
+  await ctx.close();
+}
+
 group('8b. Self-guided tour');
 const cT = await newCtx({ geolocation: { latitude: 39.39481, longitude: -76.61631, accuracy: 5 }, permissions: ['geolocation'] }, 'tour');
 const pT = await cT.newPage();

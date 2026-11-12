@@ -226,6 +226,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
     const ft = settings.heightCm ? Math.floor(settings.heightCm / 30.48) : '';
     const inch = settings.heightCm ? Math.round((settings.heightCm / 2.54) % 12) : '';
     actEl.innerHTML = `
+      <h2 class="sr-only">Activity</h2>
       <h3 class="h first">Today</h3>
       <div class="rings">
         ${ring(p.stepsPct, fmtInt(p.steps), `of ${fmtInt(goals.steps)} steps`, `${fmtInt(p.steps)} of ${fmtInt(goals.steps)} steps`)}

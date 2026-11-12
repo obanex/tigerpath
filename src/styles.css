@@ -354,3 +354,9 @@ ul.doors li { margin: 0; }
 .leaflet-container .leaflet-control-attribution a { color: #00507a; }
 :root[data-theme="dark"] .leaflet-container .leaflet-control-attribution a { color: #7dd3fc; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .leaflet-container .leaflet-control-attribution a { color: #7dd3fc; } }
+/* demo mode */
+#demoBar { position: fixed; z-index: 1750; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--black); color: #fff; border: 2px solid var(--gold);
+  border-radius: 999px; padding: 6px 14px; font-size: .82rem; box-shadow: var(--shadow); white-space: nowrap; }
+#demoBar b { color: var(--gold); } #demoBar a { color: var(--gold); margin-left: 6px; }
+@media (max-width: 760px) { #demoBar { bottom: auto; top: 10px; } }
+@media (max-width: 760px) { body:has(#demoBar) #toast, body:has(#demoBar) #banner, body:has(#demoBar) #walkBar { top: 52px; } }

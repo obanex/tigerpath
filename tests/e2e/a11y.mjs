@@ -26,6 +26,7 @@ const SCREENS = [
   ['Layers (with ♿ legend)', async (p) => { await guest(p, '#tab=layers'); const c = p.locator('input[data-l="access"]'); if (!(await c.isChecked())) await c.check(); }],
   ['My account', async (p) => { await guest(p, '#tab=account'); }],
   ['Self-guided tour', async (p) => { await guest(p, '#tour'); await p.waitForTimeout(800); }],
+  ['Demo mode: Activity (badges, chart, Hall Cup)', async (p) => { await p.goto(BASE + '?demo#tab=activity'); await ready(p); await p.waitForTimeout(800); }],
   ['Walk With Me sheet', async (p) => { await guest(p, '#from=CK&to=GT'); await p.waitForSelector('#wwmBtn'); await p.click('#wwmBtn'); await p.waitForTimeout(400); }],
 ];
 

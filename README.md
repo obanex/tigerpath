@@ -105,6 +105,14 @@ and replace `src/data/buildings.js`.
 Improving OSM (for example tagging `lit=yes`, `wheelchair=*` and `highway=steps` around campus) directly improves
 TigerPath's ♿ and 🌙 routing. A Towson GIS class or mapathon would be a good way to do it.
 
+## Demo mode (for presentations)
+
+Open **[obanex.github.io/tigerpath/?demo](https://obanex.github.io/tigerpath/?demo)** (or `#demo`) to show TigerPath with
+a sample freshman, Jordan: a class schedule with a tight transition, three weeks of walking with a goal streak, visited
+buildings, earned badges, this week's challenges and a Hall Cup where Jordan's hall (Glen Towers) won last week.
+No sign-up needed. Nothing is saved: the demo account lives in memory (`src/lib/demo.js`), never calls the cloud
+database and never touches the visitor's own TigerPath data. A bar at the top says it's a demo and links back out.
+
 ## Accounts
 
 Students sign in or create an account on the welcome screen (or later from the account button in the header). Their classes, saved places, goals, activity and reminder
@@ -211,6 +219,7 @@ src/
   lib/sun.js          sunrise/sunset (best-lit routes after dark)
   lib/alternatives.js multiple route options
   lib/account.js      accounts: on-device or Supabase
+  lib/demo.js         demo mode: sample student, in-memory only
   ui/editor.js        ?edit=1 data editor (pins + accessibility)
   ui/me.js            Me tab (account, goals, tracking, chart)
   ui/tracker.js       walk tracking (GPS + motion sensor + wake lock)

@@ -36,11 +36,13 @@ const CENTER = [39.3925, -76.6110];
 // tiny move (e.g. re-flying to almost where the map already is). Tiny moves use
 // a normal pan/zoom instead, which is what they should look like anyway.
 const leafletFlyTo = L.Map.prototype.flyTo;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 L.Map.prototype.flyTo = function (center, zoom, options) {
   const c = L.latLng(center), size = this.getSize();
   const z = zoom === undefined ? this.getZoom() : zoom;
   if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return this;
   if (!size.x || !size.y || !Number.isFinite(z)) return this.setView(c, Number.isFinite(z) ? z : this.getZoom(), { animate: false });
+  if (reducedMotion.matches) return this.setView(c, z, { animate: false }); // respect "reduce motion"
   const px = this.project(this.getCenter(), z).distanceTo(this.project(c, z));
   if (px < 200 && Math.abs(z - this.getZoom()) < 1) return this.setView(c, z, { animate: true });
   return leafletFlyTo.call(this, c, z, options);
@@ -187,8 +189,8 @@ function updateLabels() {
   map.getContainer().classList.toggle('far-out', map.getZoom() < 15); // town view: one campus marker instead of 45 pins
 }
 map.on('zoomend', updateLabels);
-document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}.far-out .bmark,.far-out .pmark{display:none}.campus-pin{display:none}.far-out .campus-pin{display:flex}</style>');
-L.marker(CENTER, { icon: L.divIcon({ className: '', html: '<div class="campus-pin"><span>TU</span>Towson University</div>', iconSize: [190, 36], iconAnchor: [95, 18] }), title: 'Zoom in to Towson University', keyboard: true, zIndexOffset: 2000 })
+document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}.far-out .bmark,.far-out .pmark{display:none}.campus-wrap{display:none}.far-out .campus-wrap{display:block}.campus-pin{display:flex}</style>');
+L.marker(CENTER, { icon: L.divIcon({ className: 'campus-wrap', html: '<div class="campus-pin"><span>TU</span>Towson University</div>', iconSize: [190, 36], iconAnchor: [95, 18] }), title: 'Zoom in to Towson University', keyboard: true, zIndexOffset: 2000 })
   .on('click', () => { if (map.getSize().x) map.flyTo(CENTER, 16); }).addTo(map);
 
 function drawParking() {

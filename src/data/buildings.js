@@ -145,11 +145,11 @@ export const BUILDINGS = [
 export const CATEGORIES = {
   academic:  { label: 'Academic',   color: '#2563eb', icon: '🎓' },
   services:  { label: 'Services',   color: '#7c3aed', icon: '🏛️' },
-  dining:    { label: 'Dining',     color: '#ea580c', icon: '🍽️' },
-  residence: { label: 'Housing',    color: '#059669', icon: '🏠' },
+  dining:    { label: 'Dining',     color: '#c2410c', icon: '🍽️' },
+  residence: { label: 'Housing',    color: '#047857', icon: '🏠' },
   athletics: { label: 'Athletics',  color: '#dc2626', icon: '🏟️' },
   parking:   { label: 'Parking',    color: '#475569', icon: '🅿️' },
-  landmark:  { label: 'Landmarks',  color: '#ca8a04', icon: '📍' },
+  landmark:  { label: 'Landmarks',  color: '#a16207', icon: '📍' },
 };
 
 export const AMENITY_LABELS = {

@@ -53,7 +53,7 @@ async function open(p, hash = '', { guest = true } = {}) {
 async function signUp(p, name, mail) {
   if (!(await p.locator('#welcome').isVisible())) { await p.click('#acctBtn'); await p.click('#openWelcome'); }
   await p.click('.authForm ~ * >> nth=0').catch(() => {});
-  if (await p.locator('.seg button[data-mode="signup"][aria-checked="false"]').count()) await p.click('.seg button[data-mode="signup"]');
+  if (await p.locator('.seg button[data-mode="signup"][aria-selected="false"]').count()) await p.click('.seg button[data-mode="signup"]');
   await p.fill('#aName', name); await p.fill('#aEmail', mail); await p.fill('#aPass', PASS);
   await p.click('.authForm button[type=submit]');
   await p.waitForSelector('#welcome', { state: 'hidden', timeout: 15000 });

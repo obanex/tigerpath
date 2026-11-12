@@ -79,7 +79,7 @@ export function search(index, query, limit = 8) {
       if (!s) { total = 0; break; }
       total += s;
     }
-    if (total) out.push({ item: e.item, score: total + (e.name === q ? 50 : 0) });
+    if (total) out.push({ item: e.item, score: total + (e.name === q ? 50 : 0) - (e.item.extra ? 5 : 0) }); // ties go to main campus buildings
   }
   return out.sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name)).slice(0, limit);
 }

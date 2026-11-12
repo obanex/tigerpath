@@ -10,14 +10,13 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
 </head>
 <body>
-  <a class="skip" href="#panel">Skip to panel</a>
-  <div id="map" role="application" aria-label="Campus map"></div>
+  <a class="skip" href="#map">Skip to map</a>
 
   <aside id="panel" class="panel" data-sheet="half" aria-label="TigerPath">
     <button class="sheet-handle" id="sheetHandle" aria-label="Resize panel"><span></span></button>
     <header class="brand">
       <div class="logo" aria-hidden="true">TU</div>
-      <div><h1>TigerPath</h1><p>Towson University campus map</p></div>
+      <div><h1 id="appTitle" tabindex="-1">TigerPath</h1><p>Towson University campus map</p></div>
       <button class="acct-btn" id="acctBtn" title="My account" aria-label="My account"><span id="acctAvatar" aria-hidden="true">👤</span></button>
     </header>
 
@@ -129,6 +128,8 @@
       </section>
     </div>
   </aside>
+  <!-- after the panel in the page, so the keyboard reaches search and tabs before ~100 map pins -->
+  <div id="map" role="application" aria-label="Campus map. Every place on it can also be found with search."></div>
 
   <div class="map-ctrls">
     <button class="fab" id="locateBtn" title="Show my location" aria-label="Show my location">◎</button>

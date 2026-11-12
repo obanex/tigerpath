@@ -52,7 +52,13 @@ Every push to `main` runs the tests, builds the site and publishes it to GitHub 
 npm test                                   # unit tests
 npm run build && npx vite preview --port 4173 &
 npm run test:e2e                           # full feature test → test-results/report.md + screenshots
+npm run test:a11y                          # accessibility check → test-results/a11y.md
 ```
+
+`test:a11y` runs axe-core (WCAG 2.2 A/AA plus best practices) on 11 screens, each on a phone and a laptop in light and
+dark mode, then does a keyboard-only trip (welcome → search → building → directions → route) checking that focus is
+never lost and always visible. Map pins that sit closer than 24 px are not counted: each has an equivalent control
+(search, lists, Nearby), which WCAG 2.5.8 allows. The app also follows the "reduce motion" setting (no map fly-overs).
 
 `test:e2e` drives the real app in a browser: map and search, directions, classes and reminders, real cloud accounts
 (sign-up, sync across two devices, deletion), activity tracking, challenges, badges, Hall Cup rankings in the real
@@ -64,7 +70,8 @@ remove them afterwards in the Supabase SQL editor:
 delete from auth.users where email like 'tigerpath-e2e-%@example.com';
 ```
 
-GitHub also runs a quick iPhone Safari + Android Chrome check on every push (`.github/workflows/browser-tests.yml`).
+GitHub also runs a quick iPhone Safari + Android Chrome check and the accessibility check on every push
+(`.github/workflows/browser-tests.yml`).
 
 ## Data sources & what still needs checking
 

@@ -60,8 +60,8 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
   function authForm(host, onDone) {
     host.innerHTML = `
       <div class="seg" role="tablist" aria-label="Account">
-        <button role="tab" aria-selected="${mode === 'signup'}" aria-checked="${mode === 'signup'}" data-mode="signup">Create account</button>
-        <button role="tab" aria-selected="${mode === 'signin'}" aria-checked="${mode === 'signin'}" data-mode="signin">Sign in</button></div>
+        <button role="tab" aria-selected="${mode === 'signup'}" data-mode="signup">Create account</button>
+        <button role="tab" aria-selected="${mode === 'signin'}" data-mode="signin">Sign in</button></div>
       <form class="authForm" novalidate>
         ${mode === 'signup' ? '<div class="field"><label for="aName">Name</label><input id="aName" autocomplete="name" required /></div>' : ''}
         <div class="field"><label for="aEmail">Email</label><input id="aEmail" type="email" autocomplete="email" placeholder="you@students.towson.edu" required /></div>
@@ -93,7 +93,11 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
     welcomeEl.querySelector('#guestBtn').onclick = () => { try { sessionStorage.setItem('tigerpath.guestSession', '1'); } catch { /* ignore */ } hideWelcome(); };
     if (matchMedia('(pointer: fine)').matches) setTimeout(() => welcomeEl.querySelector('input')?.focus(), 50); // no surprise keyboard on phones
   }
-  function hideWelcome() { welcomeEl.hidden = true; }
+  function hideWelcome() {
+    const hadFocus = welcomeEl.contains(document.activeElement);
+    welcomeEl.hidden = true;
+    if (hadFocus) document.getElementById('appTitle')?.focus({ preventScroll: true }); // don't drop keyboard users on <body>
+  }
 
   function preferences() {
     const st = acc.data.settings;

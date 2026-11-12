@@ -1,4 +1,4 @@
-# TU TigerPath — campus walking guide
+# TU TigerPath — Towson University campus navigation
 
 A campus map and wayfinding app for Towson University.
 

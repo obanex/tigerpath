@@ -177,7 +177,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
   }
 
   // ---------------------------------------------------------------- My account
-  const about = `<p class="hint about">TU TigerPath is an independent student project, not an official university app.
+  const about = `<p class="hint about">TU TigerPath is an independent student project, not an official Towson University app.
     <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="support.html" target="_blank" rel="noopener">Support</a></p>`;
   function accountView() {
     if (!acc.user) {

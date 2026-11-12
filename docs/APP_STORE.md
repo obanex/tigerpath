@@ -55,11 +55,11 @@ price to Free, and press **Add for Review**. Apple usually answers in 1–3 days
 
 ## Before you submit — two things to check
 
-**The university's name.** The app is called **TU TigerPath** and doesn't use the university's full name anywhere in the
-app, the listing, or the privacy and support pages; it says it is an independent student project, not an official
-university app, and the icon uses no university logo. ("Towson" still appears where it's a place: the town, and building and
-street names such as Towson Center or Towson Way.) Apple can still ask about "TU" or the campus content (guideline 5.2.1).
-If TU later approves the project, a short email from them saying so is the strongest answer; attach it in the review notes.
+**Use of Towson's name.** The app is named **TU TigerPath**, describes itself as "for Towson University" and says on the welcome screen, in My account,
+in the privacy policy and on the support page that it is an independent student project, not an official app. The app icon
+uses no TU logo. Apple can still ask whether you're allowed to use a university's name (guideline 5.2.1). The cleanest
+answer is a short email from TU (University Marketing & Communications, or the office sponsoring your pilot) saying they
+don't object; attach it in the review notes if you have one.
 
 **Full account deletion** is set up: "Delete account" deletes the login and everything stored with it
 (`supabase/delete-account.sql`, installed and tested on the live project).
@@ -67,16 +67,16 @@ If TU later approves the project, a short email from them saying so is the stron
 ## Listing text
 
 **Name:** TU TigerPath
-**Subtitle (30 max):** Campus walks & class reminders
+**Subtitle (30 max):** Towson walking guide & reminders
 **Category:** Navigation · secondary: Education
 **Age rating:** 4+ (no objectionable content; answer "None" throughout)
 **Price:** Free · no in-app purchases
 
 **Promotional text (170 max):**
-New on campus? Find any building, office or room, get step-free walking directions, and never be late for class.
+New at Towson? Find any building, office or room, get step-free walking directions, and never be late for class.
 
 **Description:**
-TU TigerPath is a campus walking guide made by a TU student.
+TU TigerPath is a walking guide to the Towson University campus, made by a Towson student.
 
 FIND ANYTHING
 Search buildings, offices and rooms. Type "LA 4310", "registrar" or "financial aid" and TigerPath shows you where to go.
@@ -86,7 +86,7 @@ Pick the fastest way, another way, a step-free route or the best-lit route after
 along campus paths, tells you when to turn, and keeps going with your phone locked.
 
 STEP-FREE ROUTES
-Built on the campus accessibility survey: accessible entrances, rated paths and stairs to avoid. Step-free directions take
+Built on Towson's own accessibility survey: accessible entrances, rated paths and stairs to avoid. Step-free directions take
 you to a building's accessible door.
 
 NEVER LATE FOR CLASS
@@ -106,9 +106,9 @@ Take the self-guided campus tour: ten stops with directions between them and a s
 
 Private by design: no ads, no tracking, and we never store the routes you walk.
 
-TU TigerPath is an independent student project and is not an official university app.
+TU TigerPath is an independent student project and is not an official Towson University app.
 
-**Keywords (100 max):** campus,map,TU,tigers,walking,directions,accessible,class,schedule,steps,tour,college,student
+**Keywords (100 max):** towson,campus,map,TU,tigers,walking,directions,accessible,class,schedule,steps,tour,college,university
 
 **Support URL:** https://obanex.github.io/tigerpath/support.html
 **Marketing URL:** https://obanex.github.io/tigerpath/
@@ -129,7 +129,7 @@ tracking**, purpose **App Functionality**.
 | Usage Data, Diagnostics, Purchases, Browsing, Search, Contacts, Financial, Sensitive Info | — | No |
 
 ## Notes for the reviewer (App Review Information → Notes)
-> TU TigerPath is a walking guide for a college campus in Towson, Maryland. Because directions only work on campus,
+> TU TigerPath is a walking guide for Towson University's campus in Towson, Maryland. Because directions only work on campus,
 > please tap **"Just looking? Try a demo with a sample student"** on the first screen: it opens the app as a sample student
 > with a class schedule, step history, badges and a Hall Cup. In demo mode, choose Directions (e.g. from "Albert S. Cook
 > Library" to "Liberal Arts Building") and tap **▶ Start** to watch turn-by-turn navigation walk the route on screen.

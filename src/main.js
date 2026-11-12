@@ -196,7 +196,7 @@ function updateLabels() {
 }
 map.on('zoomend', updateLabels);
 document.head.insertAdjacentHTML('beforeend', '<style>.hide-labels .blabel{display:none}.hide-detail .zd{display:none}.far-out .bmark,.far-out .pmark{display:none}.campus-wrap{display:none}.far-out .campus-wrap{display:block}.campus-pin{display:flex}</style>');
-L.marker(CENTER, { icon: L.divIcon({ className: 'campus-wrap', html: '<div class="campus-pin"><span>TU</span>TU campus</div>', iconSize: [190, 36], iconAnchor: [95, 18] }), title: 'Zoom in to the TU campus', keyboard: true, zIndexOffset: 2000 })
+L.marker(CENTER, { icon: L.divIcon({ className: 'campus-wrap', html: '<div class="campus-pin"><span>TU</span>Towson University</div>', iconSize: [190, 36], iconAnchor: [95, 18] }), title: 'Zoom in to Towson University', keyboard: true, zIndexOffset: 2000 })
   .on('click', () => { if (map.getSize().x) map.flyTo(CENTER, 16); }).addTo(map);
 
 function drawParking() {
@@ -1252,7 +1252,7 @@ async function loadTu() {
     for (const [old, now] of Object.entries(LEGACY_PARKING)) if (parkingById.has(now)) parkingById.set(old, parkingById.get(now));
   }
   if (S.tu.shuttles?.length) S.shuttles = S.tu.shuttles;
-  map.attributionControl.addAttribution('Campus data: <a href="https://maps.towson.edu/">TU Center for GIS</a>');
+  map.attributionControl.addAttribution('Campus data: <a href="https://maps.towson.edu/">Towson University</a>');
 }
 
 // ---------------------------------------------------------------- iPhone step counter (app only)

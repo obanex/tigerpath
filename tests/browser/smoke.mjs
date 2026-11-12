@@ -55,6 +55,8 @@ for (const t of targets.filter((t) => !only || t.name.includes(only))) {
     await page.goto(BASE, { waitUntil: 'load' });
     await page.waitForSelector('.bmark', { state: 'attached', timeout: 20000 });
     if (await page.locator('#guestBtn').isVisible().catch(() => false)) await page.tap('#guestBtn'); // welcome screen
+    await page.tap('#tab-campus'); // the map, with its category filters, is the Campus tab
+    await page.waitForTimeout(500);
     await snapshot('load');
     await page.tap('.chip[data-c="academic"]');
     await snapshot('academic');

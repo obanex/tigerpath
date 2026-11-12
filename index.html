@@ -17,6 +17,7 @@
     <header class="brand">
       <div class="logo" aria-hidden="true">TU</div>
       <div><h1 id="appTitle" tabindex="-1">TU TigerPath</h1><p>Towson University campus map</p></div>
+      <button class="sheet-down" id="sheetDown" title="Show map" aria-label="Show map"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="acct-btn" id="acctBtn" title="My account" aria-label="My account"><span id="acctAvatar" aria-hidden="true">👤</span></button>
     </header>
 
@@ -31,6 +32,7 @@
     <div class="views">
       <!-- EXPLORE -->
       <section id="view-explore" role="tabpanel" aria-labelledby="tab-explore">
+        <div id="greet"></div>
         <div class="search">
           <input id="q" type="search" placeholder="Search buildings, offices, rooms…" aria-label="Search buildings, departments, or rooms" autocomplete="off"
                  role="combobox" aria-expanded="false" aria-controls="qResults" aria-autocomplete="list" />
@@ -69,7 +71,7 @@
         <div class="seg days" id="dayPicker" role="radiogroup" aria-label="Day"></div>
         <div id="dayPlan"></div>
         <details class="card" id="addClass">
-          <summary>＋ Add a class</summary>
+          <summary id="classFormTitle">＋ Add a class</summary>
           <form id="classForm">
             <div class="field"><label for="cTitle">Course</label><input id="cTitle" required placeholder="e.g. COSC 236" /></div>
             <div class="row">
@@ -81,7 +83,8 @@
               <div class="field"><label for="cStart">Starts</label><input id="cStart" type="time" required value="09:30" /></div>
               <div class="field"><label for="cEnd">Ends</label><input id="cEnd" type="time" required value="10:45" /></div>
             </div>
-            <button class="btn primary" type="submit">Add class</button>
+            <div class="btn-row"><button class="btn primary" type="submit" id="classSubmit">Add class</button>
+              <button class="btn" type="button" id="classCancel" hidden>Cancel</button></div>
           </form>
         </details>
         <details class="card" id="reminderCard" open>

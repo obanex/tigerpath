@@ -91,7 +91,16 @@ const parkingById = new Map(PARKING.map((p) => [p.id, p]));
 const LEGACY_PARKING = { 'P-UG': 'P-UPG', 'P-TTG': 'P-TTPG', 'P-GG': 'P-GPG' };
 /** Short code shown on pins and lists (TU's code for buildings from TU's map). */
 const tag = (b) => b.tag ?? b.id;
-let index = createIndex(S.buildings);
+/** Parking as a search result: found by "parking", "garage", "visitor parking" or its name; visitor garages first. */
+const parkingSearchItem = (p) => ({
+  id: p.id, name: p.name, category: 'parking', tag: 'P', parking: true,
+  aliases: ['parking', p.kind === 'garage' ? 'garage' : 'lot', ...(p.visitor ? ['visitor parking'] : []), ...(p.code ? [p.code] : [])],
+  sub: [p.kind === 'garage' ? 'Parking garage' : 'Parking lot',
+    p.visitor ? (typeof p.visitor === 'number' ? `${p.visitor} visitor spaces` : 'Visitor parking') : p.permits.map((x) => PERMIT_LABELS[x] ?? x).join(', ')].filter(Boolean).join(' · '),
+  boost: (p.visitor ? 3 : 0) + (p.kind === 'garage' ? 2 : 0),
+});
+const buildIndex = () => createIndex([...S.buildings, ...S.parking.map(parkingSearchItem)]);
+let index = buildIndex();
 const safety = [...SAFETY];
 
 // ---------------------------------------------------------------- map
@@ -202,20 +211,33 @@ L.marker(CENTER, { icon: L.divIcon({ className: 'campus-wrap', html: '<div class
 function drawParking() {
   layers.parking.clearLayers();
   const osmLots = S.tu ? [] : (S.osm?.parking ?? []).filter((p) => p.name && p.name !== 'Parking' && !S.parking.some((q) => distance(p, q) < 60)).map((p, i) => ({ ...p, id: 'osm-p' + i, kind: 'lot', permits: [], fromOsm: true }));
-  const n = (x) => (typeof x === 'number' ? x.toLocaleString() : '');
   for (const p of [...S.parking, ...osmLots]) {
     if (S.permit && !p.permits.includes(S.permit)) continue;
-    const permits = p.permits.map((x) => PERMIT_LABELS[x] ?? x).join(', ') || 'See signage';
     if (p.outline) L.polygon(p.outline, { color: '#475569', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(layers.parking);
     L.marker([p.lat, p.lng], { icon: L.divIcon({ className: p.fromOsm || p.kind === 'lot' ? 'zd' : '', html: '<div class="pmark">P</div>', iconSize: [24, 24] }), title: p.name })
-      .bindPopup(`<b>${esc(p.name)}</b><br><span class="muted">${p.kind === 'garage' ? 'Garage' : 'Lot'} · ${esc(permits)}</span>
-        ${p.spaces ? `<br>${n(p.spaces)} spaces` : ''}${p.visitor ? `<br>🎟️ ${typeof p.visitor === 'number' ? `${n(p.visitor)} visitor spaces` : 'Visitor parking'}` : ''}
-        ${p.ev ? `<br>⚡ ${typeof p.ev === 'number' ? `${p.ev} EV charging spaces` : 'EV charging'}` : ''}${p.accessible ? `<br>♿ ${typeof p.accessible === 'number' ? `${p.accessible} accessible spaces` : 'Accessible spaces'}` : ''}${p.note ? `<br>${esc(p.note)}` : ''}
-        ${S.tu ? '<br><a href="https://www.towson.edu/parking/" target="_blank" rel="noopener">Permits &amp; rules ↗</a>' : ''}
-        <div class="ctx-menu"><button data-route-to="parking:${esc(p.id)}">Directions here</button><button data-route-from="parking:${esc(p.id)}">Walk from here</button></div>`)
+      .bindPopup(parkingPopup(p))
       .addTo(layers.parking);
     if (!parkingById.has(p.id)) parkingById.set(p.id, p);
   }
+}
+function parkingPopup(p) {
+  const n = (x) => (typeof x === 'number' ? x.toLocaleString() : '');
+  const permits = p.permits.map((x) => PERMIT_LABELS[x] ?? x).join(', ') || 'See signage';
+  return `<b>${esc(p.name)}</b><br><span class="muted">${p.kind === 'garage' ? 'Garage' : 'Lot'} · ${esc(permits)}</span>
+    ${p.spaces ? `<br>${n(p.spaces)} spaces` : ''}${p.visitor ? `<br>🎟️ ${typeof p.visitor === 'number' ? `${n(p.visitor)} visitor spaces` : 'Visitor parking'}` : ''}
+    ${p.ev ? `<br>⚡ ${typeof p.ev === 'number' ? `${p.ev} EV charging spaces` : 'EV charging'}` : ''}${p.accessible ? `<br>♿ ${typeof p.accessible === 'number' ? `${p.accessible} accessible spaces` : 'Accessible spaces'}` : ''}${p.note ? `<br>${esc(p.note)}` : ''}
+    ${S.tu ? '<br><a href="https://www.towson.edu/parking/" target="_blank" rel="noopener">Permits &amp; rules ↗</a>' : ''}
+    <div class="ctx-menu"><button data-route-to="parking:${esc(p.id)}">Directions here</button><button data-route-from="parking:${esc(p.id)}">Walk from here</button></div>`;
+}
+/** A garage or lot picked in search: fly there and open its details, even with the Parking layer off. */
+function showParking(id) {
+  const p = parkingById.get(id); if (!p) return;
+  if (S.selected) { S.selected = null; S.room = null; refreshMarkers(); renderDetail(); writeHash(); }
+  sheet('peek'); // room on the map for the details card
+  setTimeout(() => {
+    map.once('moveend', () => L.popup({ autoPanPaddingTopLeft: [12, 60] }).setLatLng([p.lat, p.lng]).setContent(parkingPopup(p)).openOn(map));
+    flyTo([p.lat, p.lng], 17);
+  }, isMobile() ? 260 : 0); // after the sheet has slid down, so the map centres in the space left
 }
 function drawShuttles() {
   layers.shuttle.clearLayers();
@@ -453,6 +475,7 @@ function showTab(name) {
   map.getContainer().classList.toggle('touring', name === 'tour'); // fade regular pins so the tour stops stand out
   if (name !== 'tour') layers.tour.clearLayers();
   $('#acctBtn').setAttribute('aria-pressed', String(name === 'account'));
+  if (name !== S.tab) $('.views').scrollTop = 0; // the tabs share one scroller: each opens at its top
   S.tab = name;
   if (name === 'schedule') renderSchedule();
   if (name === 'account' || name === 'activity') meView?.render();
@@ -471,10 +494,47 @@ $('.tabs').addEventListener('keydown', (e) => {
   const t = TABS[(i + TABS.length) % TABS.length]; showTab(t); $(`#tab-${t}`).focus();
 });
 const SHEET = ['peek', 'half', 'full'];
+let sheetDragged = false;
 $('#sheetHandle').addEventListener('click', () => {
+  if (sheetDragged) return; // the drag already picked a size
   const p = $('#panel'); p.dataset.sheet = SHEET[(SHEET.indexOf(p.dataset.sheet) + 1) % 3];
 });
 const sheet = (s) => { if (isMobile()) $('#panel').dataset.sheet = s; };
+$('#sheetDown').addEventListener('click', () => { sheet('peek'); $('#sheetHandle').focus(); });
+// Drag the handle or the header up and down like an iOS sheet; it settles on the nearest size,
+// and a quick flick that wouldn't reach another size moves one size in its direction.
+for (const grip of [$('#sheetHandle'), $('#panel .brand')]) {
+  let drag = null;
+  grip.addEventListener('pointerdown', (e) => {
+    sheetDragged = false;
+    if (!isMobile() || e.target.closest('.brand button')) return;
+    drag = { y: e.clientY, h: $('#panel').offsetHeight, t: e.timeStamp, lastY: e.clientY, lastT: e.timeStamp };
+    grip.setPointerCapture(e.pointerId);
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    drag.lastY = e.clientY; drag.lastT = e.timeStamp;
+    const dy = e.clientY - drag.y;
+    if (!sheetDragged && Math.abs(dy) < 6) return;
+    sheetDragged = true;
+    const p = $('#panel'); p.classList.add('dragging');
+    p.style.height = `${Math.min(innerHeight - 40, Math.max(120, drag.h - dy))}px`;
+  });
+  const end = () => {
+    const d = drag; drag = null;
+    if (!d || !sheetDragged) return;
+    const p = $('#panel');
+    const sizes = [150, innerHeight * 0.52, innerHeight - 40];
+    const h = p.offsetHeight, speed = (d.y - d.lastY) / Math.max(1, d.lastT - d.t); // px/ms, up is positive
+    let i = sizes.reduce((best, s, j) => (Math.abs(s - h) < Math.abs(sizes[best] - h) ? j : best), 0);
+    const from = SHEET.indexOf(p.dataset.sheet);
+    if (Math.abs(speed) > 0.5 && i === from) i = Math.max(0, Math.min(2, from + Math.sign(speed))); // a short flick still moves
+    p.classList.remove('dragging'); p.style.height = '';
+    p.dataset.sheet = SHEET[i];
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('lostpointercapture', end); // also covers a cancelled touch or a dropped capture
+}
 
 // ---------------------------------------------------------------- generic UI helpers
 function renderSeg(sel, options, current, onPick) {
@@ -482,10 +542,29 @@ function renderSeg(sel, options, current, onPick) {
   el.innerHTML = options.map(([v, label]) => `<button role="radio" aria-checked="${v === current}" data-v="${esc(v)}">${esc(label)}</button>`).join('');
   el.onclick = (e) => { const v = e.target.closest('button')?.dataset.v; if (v != null) onPick(v); };
 }
-let toastTimer;
-function toast(msg, ms = 2600) {
-  const t = $('#toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);
+// Toasts: a short message at the bottom of the screen, clear of the tabs and the turn banner. They queue
+// rather than replace each other; `action` ({ label, run }) adds a button such as Undo.
+const toastQueue = [];
+let toastTimer = null;
+function toast(msg, ms = 2600, action = null) {
+  if (toastTimer && $('#toast').dataset.msg === msg) return; // already showing
+  toastQueue.push({ msg, ms, action });
+  if (toastQueue.length > 3) toastQueue.shift(); // a burst keeps only the latest few
+  if (!toastTimer) nextToast();
+}
+function nextToast() {
+  const t = $('#toast'), next = toastQueue.shift();
+  clearTimeout(toastTimer);
+  if (!next) { t.hidden = true; toastTimer = null; return; }
+  t.dataset.msg = next.msg; t.textContent = next.msg;
+  if (next.action) {
+    const b = document.createElement('button'); b.className = 'toast-act'; b.textContent = next.action.label;
+    b.onclick = () => { next.action.run(); nextToast(); };
+    t.append(b);
+  }
+  t.style.bottom = document.body.classList.contains('navigating') ? `${$('#navBottom').offsetHeight + 12}px` : '';
+  t.hidden = false;
+  toastTimer = setTimeout(nextToast, toastQueue.length ? Math.min(next.ms, 2600) : next.ms); // don't hold up the next one
 }
 /** This screen's link (the public website's address, also inside the iPhone app). */
 const shareUrl = () => shareBase() + location.search + location.hash;
@@ -494,22 +573,31 @@ async function share(url, title) {
   try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch { prompt('Copy this link', url); }
 }
 
+/** A search result's second line: what matched ("🍴 Starbucks") when it wasn't the name, else its offices. */
+function resultSub({ b, why }) {
+  if (b.sub) return b.sub;
+  const label = CATEGORIES[b.category].label;
+  if (why?.kind === 'food') return `${label} · 🍴 ${why.text}`;
+  if (why?.kind === 'amenity') return `${label} · ${AMENITY_LABELS[why.text] ?? why.text}`;
+  if (why?.kind === 'dept') return `${label} · ${why.text}`;
+  return label + (b.depts?.length ? ' · ' + b.depts.slice(0, 2).join(', ') : '');
+}
 /** Typeahead on an input. onPick(item) gets { type, id, ... }. */
 function attachTypeahead(input, list, onPick, { allowMe = false } = {}) {
   let items = [], active = -1;
   const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; };
   const render = () => {
     const q = input.value.trim();
-    items = q ? search(index, q).map((r) => ({ type: 'building', id: r.item.id, b: r.item, room: r.room })) : [];
+    items = q ? search(index, q).map((r) => ({ type: r.item.parking ? 'parking' : 'building', id: r.item.id, b: r.item, room: r.room, why: r.why })) : [];
     if (allowMe && (!q || 'my location'.startsWith(q.toLowerCase()))) items.unshift({ type: 'me' });
     if (!items.length) {
-      list.innerHTML = q ? '<li class="muted" aria-disabled="true">No matches. Try a building code like “LA” or a department.</li>' : '';
+      list.innerHTML = q ? '<li class="muted" aria-disabled="true">No matches. Try a building, an office, food or “parking”.</li>' : '';
       list.hidden = !q; return;
     }
     list.innerHTML = items.map((it, i) => it.type === 'me'
       ? `<li role="option" id="${list.id || input.id}-o${i}" data-i="${i}"><span class="code">📍</span><div>My location</div></li>`
       : `<li role="option" id="${list.id || input.id}-o${i}" data-i="${i}"><span class="code">${esc(tag(it.b))}</span><div>${esc(it.b.name)}${it.room ? ` · Room ${esc(it.room.room)}` : ''}
-          <div class="sub">${esc(CATEGORIES[it.b.category].label)}${it.b.depts?.length ? ' · ' + esc(it.b.depts.slice(0, 2).join(', ')) : ''}</div></div></li>`).join('');
+          <div class="sub">${esc(resultSub(it))}</div></div></li>`).join('');
     list.hidden = false; input.setAttribute('aria-expanded', 'true');
   };
   const highlight = () => {
@@ -547,8 +635,10 @@ function renderChips() {
     } else renderHome();
   };
 }
+/** The Explore home (greeting above search, Campus Pulse below) or a building's details. */
+const showHome = (on) => { $('#home').hidden = !on; $('#greet').hidden = !on; };
 function renderCategoryList(bs) {
-  $('#detail').hidden = true; $('#home').hidden = false;
+  $('#detail').hidden = true; showHome(true);
   $('#nearestOut').innerHTML = `<h2 class="h">${esc(CATEGORIES[S.category].label)} · ${bs.length}</h2><ul class="list">${bs.map((b) => {
     const st = openStatus(b.hours);
     return `<li><span class="code">${esc(tag(b))}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}${st.label ? `<div class="sub ${st.open ? 'status open' : 'status closed'}" style="margin:0">${esc(st.label)}</div>` : ''}</button></li>`;
@@ -558,6 +648,7 @@ function renderCategoryList(bs) {
 function selectBuilding(id, { room = null, fly = true } = {}) {
   const b = byId.get(id); if (!b) return;
   S.selected = id; S.room = room;
+  if (document.activeElement !== $('#q')) $('#q').value = ''; // a name typed for another building would be stale
   acc.update((d) => { d.recent = [id, ...d.recent.filter((x) => x !== id)].slice(0, 6); });
   refreshMarkers();
   if (fly) flyTo([b.lat, b.lng]);
@@ -567,7 +658,7 @@ function selectBuilding(id, { room = null, fly = true } = {}) {
 function renderDetail() {
   const b = byId.get(S.selected);
   const el = $('#detail');
-  if (!b) { el.hidden = true; $('#home').hidden = false; return; }
+  if (!b) { el.hidden = true; showHome(true); return; }
   const cat = CATEGORIES[b.category];
   const st = openStatus(b.hours);
   const today = DAY_LABELS[DAYS[new Date().getDay()]];
@@ -593,7 +684,7 @@ function renderDetail() {
     ${b.hours ? `<h2 class="h">Hours</h2><table class="hours">${weekTable(b.hours).map((r) => `<tr class="${r.day === today ? 'today' : ''}"><td>${r.day}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>` : ''}
     <h2 class="h">♿ Accessibility</h2>${accessCard(b)}
     <h2 class="h">Nearby</h2><ul class="list" id="nearby"></ul>`;
-  el.hidden = false; $('#home').hidden = true;
+  el.hidden = false; showHome(false);
   $('#backBtn').onclick = () => { S.selected = null; S.room = null; refreshMarkers(); renderDetail(); renderHome(); writeHash(); };
   $('#dirTo').onclick = () => { setPlace('to', { type: 'building', id: b.id }); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
   $('#dirFrom').onclick = () => { setPlace('from', { type: 'building', id: b.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
@@ -1035,16 +1126,40 @@ function renderSchedule() {
     const leg = plan.legs[i];
     return `<div class="class-item"><span class="num">${i + 1}</span><div class="meta"><b>${esc(c.title)}</b>
         <span class="sub">${formatTime(c.start)}–${formatTime(c.end)} · <a href="#" data-b="${esc(c.building)}" data-room="${esc(c.room ?? '')}">${esc(b?.name ?? c.building)}${c.room ? ' ' + esc(c.room) : ''}</a></span></div>
+        <button class="icon-btn" data-edit="${esc(c.id)}" aria-label="Edit ${esc(c.title)}">✎</button>
         <button class="icon-btn" data-del="${esc(c.id)}" aria-label="Remove ${esc(c.title)}">✕</button></div>
       ${leg ? `<div class="leg ${leg.status}">${LEG_TEXT[leg.status](leg)}</div>` : ''}`;
   }).join('');
-  el.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = () => { acc.update((d) => { d.schedule = d.schedule.filter((c) => c.id !== btn.dataset.del); }); renderSchedule(); });
+  el.querySelectorAll('[data-edit]').forEach((btn) => btn.onclick = () => editClass(btn.dataset.edit));
+  el.querySelectorAll('[data-del]').forEach((btn) => btn.onclick = () => {
+    const at = S.schedule.findIndex((c) => c.id === btn.dataset.del), cls = S.schedule[at];
+    if (S.editingClass === cls.id) endClassEdit();
+    acc.update((d) => { d.schedule = d.schedule.filter((c) => c.id !== cls.id); });
+    renderSchedule();
+    toast(`Removed ${cls.title}`, 6000, { label: 'Undo', run: () => { acc.update((d) => { d.schedule.splice(at, 0, cls); }); renderSchedule(); } });
+  });
   el.querySelectorAll('[data-room]').forEach((a) => a.onclick = (e) => {
     e.preventDefault(); e.stopPropagation();
     const room = a.dataset.room ? search(index, `${a.dataset.b} ${a.dataset.room}`)[0]?.room : null;
     selectBuilding(a.dataset.b, { room });
   });
   drawDay(plan);
+}
+/** Fill the class form with a class to change it; saving replaces it in place. */
+function editClass(id) {
+  const c = S.schedule.find((x) => x.id === id); if (!c) return;
+  S.editingClass = id;
+  $('#cTitle').value = c.title; $('#cBldg').value = c.building; $('#cRoom').value = c.room ?? '';
+  $('#cDays').querySelectorAll('input').forEach((i) => { i.checked = c.days.includes(i.value); });
+  $('#cStart').value = c.start; $('#cEnd').value = c.end;
+  $('#classFormTitle').textContent = `✎ Edit ${c.title}`; $('#classSubmit').textContent = 'Save changes'; $('#classCancel').hidden = false;
+  $('#addClass').open = true;
+  $('#addClass').scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+function endClassEdit() {
+  S.editingClass = null;
+  $('#classForm').reset(); $('#cStart').value = '09:30'; $('#cEnd').value = '10:45';
+  $('#classFormTitle').textContent = '＋ Add a class'; $('#classSubmit').textContent = 'Add class'; $('#classCancel').hidden = true;
 }
 let lastDayFit = '';
 function drawDay(plan) {
@@ -1078,13 +1193,18 @@ function initScheduleForm() {
     const days = [...$('#cDays').querySelectorAll('input:checked')].map((i) => i.value);
     if (!days.length) { toast('Pick at least one day'); return; }
     if ($('#cEnd').value <= $('#cStart').value) { toast('End time must be after start time'); return; }
-    const cls = { id: crypto.randomUUID?.() ?? String(Date.now()), title: $('#cTitle').value.trim(), building: $('#cBldg').value,
+    const editing = S.editingClass;
+    const cls = { id: editing ?? crypto.randomUUID?.() ?? String(Date.now()), title: $('#cTitle').value.trim(), building: $('#cBldg').value,
       room: $('#cRoom').value.trim(), days, start: $('#cStart').value, end: $('#cEnd').value };
-    acc.update((d) => { d.schedule.push(cls); });
+    acc.update((d) => {
+      const at = d.schedule.findIndex((c) => c.id === editing);
+      if (at >= 0) d.schedule[at] = cls; else d.schedule.push(cls);
+    });
     if (!days.includes(S.day)) S.day = days[0];
-    e.target.reset(); $('#cStart').value = '09:30'; $('#cEnd').value = '10:45';
-    renderSchedule(); toast('Class added');
+    endClassEdit();
+    renderSchedule(); toast(editing ? 'Class updated' : 'Class added');
   };
+  $('#classCancel').onclick = endClassEdit;
   const y = new Date().getFullYear();
   const syncTerm = () => { $('#termStart').value = S.settings.term?.start ?? `${y}-08-31`; $('#termEnd').value = S.settings.term?.end ?? `${y}-12-11`; };
   syncTerm(); acc.onChange(syncTerm);
@@ -1212,7 +1332,9 @@ function readHash() {
 // ---------------------------------------------------------------- search box (explore)
 attachTypeahead($('#q'), $('#qResults'), (it) => {
   if (it.type === 'me') { locate(); return; }
-  $('#q').value = it.b.name; selectBuilding(it.id, { room: it.room ?? null });
+  $('#q').value = ''; $('#q').blur(); // the keyboard would cover the card
+  if (it.type === 'parking') { showParking(it.id); return; }
+  selectBuilding(it.id, { room: it.room ?? null });
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); showTab('explore'); $('#q').focus(); }
@@ -1244,13 +1366,13 @@ async function loadTu() {
     S.tu = await res.json();
   } catch { return; } // not bundled — TigerPath's own sample data is used
   for (const x of mergeBuildings(S.buildings, S.tu)) { S.buildings.push(x); byId.set(x.id, x); }
-  index = createIndex(S.buildings);
   if (S.tu.parking?.length) {
     S.parking = S.tu.parking;
     parkingById.clear();
     for (const p of S.parking) parkingById.set(p.id, p);
     for (const [old, now] of Object.entries(LEGACY_PARKING)) if (parkingById.has(now)) parkingById.set(old, parkingById.get(now));
   }
+  index = buildIndex();
   if (S.tu.shuttles?.length) S.shuttles = S.tu.shuttles;
   map.attributionControl.addAttribution('Campus data: <a href="https://maps.towson.edu/">Towson University</a>');
 }
@@ -1305,7 +1427,7 @@ function nextClassWalk(cls) {
 function renderPulseNow() {
   const el = $('#pulse'); if (!el || !acc.backend) return;
   renderPulse(el, {
-    acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk, hallBoard: hallBoard(), lastWinner: S.lastWinner,
+    headEl: $('#greet'), acc, buildings: S.buildings, byId, weather: S.weather, units: S.units, stepFreeToday: stepFreeToday(), nextClassWalk, hallBoard: hallBoard(), lastWinner: S.lastWinner,
     actions: {
       directionsTo: (cls) => { const w = nextClassWalk(cls); setPlace('from', w?.from ?? (S.me ? { type: 'me' } : null)); setPlace('to', { type: 'building', id: cls.building }); showTab('directions'); },
       addClasses: () => { showTab('schedule'); $('#addClass').open = true; },
@@ -1527,11 +1649,19 @@ function renderReminderCard() {
         ${[0, 5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${m === (st.leadMinutes ?? 10) ? 'selected' : ''}>${m ? `${m} minutes before` : 'When it’s time to leave'}</option>`).join('')}
       </select></div></div>
     <label class="check"><input type="checkbox" id="remWalk" ${st.addWalkTime ? 'checked' : ''}/> Add walking time from my previous class</label>
-    ${st.notifications && perm === 'denied' ? '<p class="form-error">Notifications are blocked in your browser settings. You’ll still see reminders inside TigerPath while it’s open.</p>' : ''}
+    ${st.notifications && perm === 'denied' ? `<p class="form-error">${isNative
+      ? 'Notifications are off for TU TigerPath. Turn them on in Settings → Notifications → TU TigerPath. Until then you’ll see reminders only while the app is open.'
+      : 'Notifications are blocked in your browser settings. You’ll still see reminders inside TigerPath while it’s open.'}</p>` : ''}
     ${st.notifications && next ? `<p class="hint">Next: <b>${esc(next.cls.title)}</b> — reminder at ${t(next.fireAt)}${next.leaveBy ? ` (leave by ${t(next.leaveBy)})` : ''}.</p>` : ''}
     <div class="btn-row"><button class="btn small" id="remTest" type="button">Send a test reminder</button></div>
-    <p class="hint">Reminders appear while TigerPath is open or installed on your phone. For reminders when it’s closed, use <b>Export to calendar</b> below — your calendar app will alert you at the same time.</p>`;
-  $('#remOn').onchange = async (e) => { if (e.target.checked) { const p = await reminders.enable(); toast(p === 'granted' ? 'Class reminders on' : 'Reminders on (inside TigerPath only)'); } else reminders.disable(); };
+    <p class="hint">${isNative
+      ? 'Reminders arrive as notifications even when TigerPath is closed. To see your classes in your calendar too, use <b>Export to calendar</b> below.'
+      : 'Reminders appear while TigerPath is open or installed on your phone. For reminders when it’s closed, use <b>Export to calendar</b> below — your calendar app will alert you at the same time.'}</p>`;
+  $('#remOn').onchange = async (e) => {
+    if (!e.target.checked) { reminders.disable(); return; }
+    const p = await reminders.enable();
+    toast(p === 'granted' ? 'Class reminders on' : isNative ? 'Allow notifications in Settings to get reminders when TigerPath is closed' : 'Reminders on (inside TigerPath only)', 4000);
+  };
   $('#remLead').onchange = (e) => acc.update((d) => { d.settings.leadMinutes = +e.target.value; });
   $('#remWalk').onchange = (e) => acc.update((d) => { d.settings.addWalkTime = e.target.checked; });
   $('#remTest').onclick = async () => { if (reminders.permission === 'default') await Notification.requestPermission(); reminders.test(); };

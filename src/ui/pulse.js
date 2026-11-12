@@ -1,6 +1,7 @@
 // Campus Pulse: the first thing on the Explore tab — what matters right now.
-// Next class (with a leave-by time), weather + walking advice, what's open,
-// today's activity and this week's challenges, and Walk With Me after dark.
+// The greeting and weather sit above search (headEl); below it come the next class
+// (with a leave-by time), what's open, today's activity and this week's challenges,
+// and Walk With Me after dark.
 
 import { upcomingClasses } from '../lib/reminders.js';
 import { openStatus, formatTime } from '../lib/hours.js';
@@ -14,7 +15,7 @@ const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinu
 const bar = (pct) => `<span class="pbar"><span style="width:${Math.round(pct * 100)}%"></span></span>`;
 
 /**
- * ctx: { acc, buildings, byId, weather, units, now, nextClassWalk(cls) -> { minutes, fromLabel, from } | null,
+ * ctx: { headEl (greeting + weather), acc, buildings, byId, weather, units, now, nextClassWalk(cls) -> { minutes, fromLabel, from } | null,
  *        stepFreeToday, actions: { directionsTo(cls, from), addClasses(), walkWithMe(), signIn(), stepFreeToday(), openAccount() } }
  */
 export function renderPulse(el, ctx) {
@@ -35,8 +36,8 @@ export function renderPulse(el, ctx) {
       ${adv.icy && !ctx.stepFreeToday ? '<button class="btn small" data-act="stepfree">Use step-free routes today</button>' : ''}
       ${adv.icy && ctx.stepFreeToday ? '<span class="wx-tip">✓ Step-free routes picked first today.</span>' : ''}</div>`;
   }
-  parts.push(`<div class="pulse-head"><div><h2>${greet}${name ? `, ${esc(name)}` : ''}</h2>
-    <span class="muted small">${now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</span></div></div>${wx}`);
+  ctx.headEl.innerHTML = `<div class="greet"><div class="pulse-head"><div><h2>${greet}${name ? `, ${esc(name)}` : ''}</h2>
+    <span class="muted small">${now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</span></div></div>${wx}</div>`;
 
   // --- next class
   const next = upcomingClasses(acc.data.schedule, now, 36, acc.data.settings.term)[0];
@@ -106,7 +107,7 @@ export function renderPulse(el, ctx) {
     <div class="btn-row"><button class="btn small" data-act="walk">Start a safe walk</button></div></div>`);
 
   el.innerHTML = `<section class="pulse" aria-label="Campus Pulse">${parts.join('')}</section>`;
-  el.onclick = (e) => {
+  el.onclick = ctx.headEl.onclick = (e) => {
     const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return;
     const act = ctx.actions;
     if (a === 'nextclass') act.directionsTo(next.cls);

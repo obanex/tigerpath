@@ -69,6 +69,23 @@ test('search: codes, names, aliases, departments, typos, rooms', () => {
   assert.equal(search(idx, 'zzzz').length, 0);
 });
 
+test('search: everyday words, questions, why it matched, parking', () => {
+  const idx = createIndex(BUILDINGS);
+  assert.equal(search(idx, 'where do i pay tuition')[0].item.id, 'ES');
+  const coffee = search(idx, 'coffee').map((r) => r.item.id);
+  assert.ok(coffee.includes('CK'), coffee.join());
+  const sb = search(idx, 'starbucks')[0];
+  assert.equal(sb.item.id, 'CK'); assert.deepEqual(sb.why, { kind: 'food', text: 'Starbucks' });
+  assert.equal(search(idx, 'library')[0].why, null); // matched by name: nothing to explain
+  assert.ok(search(idx, 'bathroom').length > 0);
+  const lots = createIndex([...BUILDINGS,
+    { id: 'P-A', name: 'Lot 16', category: 'parking', aliases: ['parking', 'lot'] },
+    { id: 'P-B', name: 'West Village Garage', category: 'parking', aliases: ['parking', 'garage', 'visitor parking'], boost: 5 }]);
+  assert.equal(search(lots, 'parking')[0].item.id, 'P-B');
+  assert.equal(search(lots, 'visitor parking')[0].item.id, 'P-B');
+  assert.equal(search(lots, 'where can i park')[0].item.id, 'P-B');
+});
+
 test('hours: open, closed, past-midnight', () => {
   const h = { mon: '08:00-17:00', fri: '18:00-02:00' };
   // 2026-11-09 is a Monday

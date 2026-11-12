@@ -337,7 +337,7 @@ if (CLOUD) {
 group('6. Campus Pulse');
 await check('Greeting, weather advice, next class, food open, Walk With Me', async () => {
   await p3.click('#tab-explore'); await p3.waitForSelector('.pulse-wx');
-  const t = await text(p3.locator('.pulse'));
+  const t = await text(p3.locator('#view-explore')); // the greeting and weather sit above search, the rest below
   for (const s of ['30°F', 'Snow', 'step-free', 'NEXT CLASS', 'FOOD OPEN NOW', 'WALK WITH ME']) expect(t.toUpperCase().includes(s.toUpperCase()), `missing "${s}"`);
   return t.slice(0, 80);
 });
@@ -416,7 +416,7 @@ group('8c. Demo mode');
     expect(p.url().includes('?demo'), p.url());
     expect(!(await p.locator('#welcome').isVisible()), 'welcome screen shown');
     const bar = await text(p.locator('#demoBar')); expect(/nothing is saved/.test(bar), bar);
-    const home = await text(p.locator('#home')); expect(/Jordan/.test(home) && /day streak/.test(home), home.slice(0, 120));
+    const home = await text(p.locator('#view-explore')); expect(/Jordan/.test(home) && /day streak/.test(home), home.slice(0, 120));
     return home.slice(0, 70);
   });
   await check('Demo: classes, activity, badges and a Hall Cup with a champion', async () => {

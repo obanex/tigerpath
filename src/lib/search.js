@@ -32,6 +32,7 @@ export function createIndex(items) {
   return items.map((item) => ({
     item,
     code: norm(item.id),
+    official: norm(item.tu?.code ?? ''), // TU's own building code, when it differs
     name: norm(item.name),
     words: norm(item.name).split(' '),
     aliases: (item.aliases ?? []).map(norm),
@@ -43,7 +44,7 @@ export function createIndex(items) {
 
 function scoreToken(t, e) {
   let s = 0;
-  if (e.code === t) s = Math.max(s, 100);
+  if (e.code === t || e.official === t) s = Math.max(s, 100);
   if (e.name.startsWith(t)) s = Math.max(s, 80);
   if (e.words.some((w) => w.startsWith(t))) s = Math.max(s, 60);
   if (e.aliases.some((a) => a === t)) s = Math.max(s, 75);
@@ -65,7 +66,8 @@ export function search(index, query, limit = 8) {
   if (!q) return [];
   const room = parseRoom(query);
   if (room) {
-    const hit = index.find((e) => e.code === room.code.toLowerCase());
+    const c = room.code.toLowerCase();
+    const hit = index.find((e) => e.official === c) ?? index.find((e) => e.code === c);
     if (hit) return [{ item: hit.item, score: 1000, room }];
   }
   const tokens = q.split(' ');

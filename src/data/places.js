@@ -1,27 +1,27 @@
-// Non-building map features. Garage positions are OpenStreetMap footprint
-// centroids (fetched 2026-11-11); permit types still need checking against
-// towson.edu/parking. Safety features (emergency phones, AEDs) are deliberately NOT
+// Non-building map features. These are FALLBACKS: when public/data/tu-campus.json
+// (TU's official campus map data, see scripts/fetch-tu.mjs) is present, the app
+// uses TU's parking areas and shuttle lines instead. Safety features (emergency phones, AEDs) are deliberately NOT
 // invented here: they come only from verified sources (OpenStreetMap import or
 // the university's own data), so the map never shows a phone that isn't there.
 
 export const PARKING = [
   { id: 'P-UG', name: 'Union Garage', lat: 39.39303, lng: -76.61256, kind: 'garage',
-    permits: ['commuter', 'faculty-staff', 'visitor'], ev: true, accessible: true,
+    permits: ['core', 'faculty-staff', 'visitor'], ev: true, accessible: true,
     note: 'Parking & Transportation Services office on the ground level.' },
   { id: 'P-WVG', name: 'West Village Garage', lat: 39.39505, lng: -76.62070, kind: 'garage',
-    permits: ['resident', 'commuter', 'visitor'], ev: false, accessible: true },
+    permits: ['resident', 'overflow', 'visitor'], ev: false, accessible: true },
   { id: 'P-TTG', name: 'Towsontown Garage', lat: 39.39606, lng: -76.60930, kind: 'garage',
-    permits: ['commuter', 'faculty-staff'], ev: false, accessible: true },
+    permits: ['core', 'faculty-staff'], ev: false, accessible: true },
   { id: 'P-GG', name: 'Glen Garage', lat: 39.39090, lng: -76.60694, kind: 'garage',
-    permits: ['resident', 'commuter'], ev: false, accessible: true },
+    permits: ['resident', 'core'], ev: false, accessible: true },
 ];
 
+// TU's permit types (letters on TU's map: C, O, R, F).
 export const PERMIT_LABELS = {
-  commuter: 'Commuter', resident: 'Resident', 'faculty-staff': 'Faculty / Staff', visitor: 'Visitor (pay)',
+  core: 'Core', overflow: 'Overflow', resident: 'Resident', 'faculty-staff': 'Faculty / Staff', visitor: 'Visitor (pay)',
 };
 
-// Shuttle data is a SAMPLE showing the data shape. Replace with the
-// university's GTFS feed or TUTigerRide data before launch.
+// Shuttle data is a SAMPLE showing the data shape, used only without TU's data.
 export const SHUTTLES = [
   { id: 'sample-loop', name: 'Campus Loop (sample)', color: '#ffbb00', sample: true,
     stops: [

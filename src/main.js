@@ -27,6 +27,7 @@ import { parseWatch } from './lib/walkwithme.js';
 import { recordVisit, newBadges, BADGES, weeklyChallenges, weekStats, challengeProgress, weekKey } from './lib/challenges.js';
 import { teamOptions, rankRows, previousWeek, winnerOf, isChampion } from './lib/leaderboard.js';
 import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/accessibility.js';
+import { tagGraph, addTuRoutes, mergeBuildings, activeConstruction } from './lib/tu.js';
 
 const CENTER = [39.3925, -76.6110];
 
@@ -57,6 +58,7 @@ const EDIT = new URLSearchParams(location.search).has('edit');
 const S = {
   buildings: applyPinOverrides(BUILDINGS),
   graph: null, graphSource: 'seed', osm: null,
+  tu: null, parking: PARKING, shuttles: SHUTTLES, // TU's official campus map data replaces these when loaded
   selected: null, room: null,
   from: null, to: null, profile: 'standard', lastRoute: null,
   me: null, live: false, watchId: null,
@@ -77,6 +79,10 @@ Object.defineProperties(S, {
 });
 const byId = new Map(S.buildings.map((b) => [b.id, b]));
 const parkingById = new Map(PARKING.map((p) => [p.id, p]));
+// parking ids used before TU's official data (old shared links) -> official ids
+const LEGACY_PARKING = { 'P-UG': 'P-UPG', 'P-TTG': 'P-TTPG', 'P-GG': 'P-GPG' };
+/** Short code shown on pins and lists (TU's code for buildings from TU's map). */
+const tag = (b) => b.tag ?? b.id;
 let index = createIndex(S.buildings);
 const safety = [...SAFETY];
 
@@ -159,7 +165,7 @@ function buildingIcon(b) {
   const cls = ['bmark'];
   if (S.selected === b.id) cls.push('sel');
   if (S.category && b.category !== S.category) cls.push('dim');
-  return L.divIcon({ className: '', html: `<div class="${cls.join(' ')}" style="background:${c}">${esc(b.id)}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+  return L.divIcon({ className: b.extra ? 'zd' : '', html: `<div class="${cls.join(' ')}" style="background:${c}">${esc(tag(b))}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
 }
 function drawBuildings() {
   layers.buildings.clearLayers(); markers.clear();
@@ -187,13 +193,17 @@ L.marker(CENTER, { icon: L.divIcon({ className: '', html: '<div class="campus-pi
 
 function drawParking() {
   layers.parking.clearLayers();
-  const list = [...PARKING, ...(S.osm?.parking ?? []).filter((p) => p.name && p.name !== 'Parking' && !PARKING.some((q) => distance(p, q) < 60)).map((p, i) => ({ ...p, id: 'osm-p' + i, kind: 'lot', permits: [], fromOsm: true }))];
-  for (const p of list) {
+  const osmLots = S.tu ? [] : (S.osm?.parking ?? []).filter((p) => p.name && p.name !== 'Parking' && !S.parking.some((q) => distance(p, q) < 60)).map((p, i) => ({ ...p, id: 'osm-p' + i, kind: 'lot', permits: [], fromOsm: true }));
+  const n = (x) => (typeof x === 'number' ? x.toLocaleString() : '');
+  for (const p of [...S.parking, ...osmLots]) {
     if (S.permit && !p.permits.includes(S.permit)) continue;
-    const permits = p.permits.map((x) => PERMIT_LABELS[x]).join(', ') || 'See signage';
-    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: p.fromOsm ? 'zd' : '', html: '<div class="pmark">P</div>', iconSize: [24, 24] }), title: p.name })
+    const permits = p.permits.map((x) => PERMIT_LABELS[x] ?? x).join(', ') || 'See signage';
+    if (p.outline) L.polygon(p.outline, { color: '#475569', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(layers.parking);
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: p.fromOsm || p.kind === 'lot' ? 'zd' : '', html: '<div class="pmark">P</div>', iconSize: [24, 24] }), title: p.name })
       .bindPopup(`<b>${esc(p.name)}</b><br><span class="muted">${p.kind === 'garage' ? 'Garage' : 'Lot'} · ${esc(permits)}</span>
-        ${p.ev ? '<br>⚡ EV charging' : ''}${p.accessible ? '<br>♿ Accessible spaces' : ''}${p.note ? `<br>${esc(p.note)}` : ''}
+        ${p.spaces ? `<br>${n(p.spaces)} spaces` : ''}${p.visitor ? `<br>🎟️ ${typeof p.visitor === 'number' ? `${n(p.visitor)} visitor spaces` : 'Visitor parking'}` : ''}
+        ${p.ev ? `<br>⚡ ${typeof p.ev === 'number' ? `${p.ev} EV charging spaces` : 'EV charging'}` : ''}${p.accessible ? `<br>♿ ${typeof p.accessible === 'number' ? `${p.accessible} accessible spaces` : 'Accessible spaces'}` : ''}${p.note ? `<br>${esc(p.note)}` : ''}
+        ${S.tu ? '<br><a href="https://www.towson.edu/parking/" target="_blank" rel="noopener">Permits &amp; rules ↗</a>' : ''}
         <div class="ctx-menu"><button data-route-to="parking:${esc(p.id)}">Directions here</button><button data-route-from="parking:${esc(p.id)}">Walk from here</button></div>`)
       .addTo(layers.parking);
     if (!parkingById.has(p.id)) parkingById.set(p.id, p);
@@ -201,11 +211,20 @@ function drawParking() {
 }
 function drawShuttles() {
   layers.shuttle.clearLayers();
-  for (const r of SHUTTLES) {
-    const pts = r.stops.map((s) => [s.lat, s.lng]);
-    L.polyline([...pts, pts[0]], { color: r.color, weight: 5, opacity: 0.9, dashArray: r.sample ? '8 8' : null }).bindTooltip(r.name).addTo(layers.shuttle);
-    r.stops.forEach((s) => L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', html: '<div class="smark">🚌</div>', iconSize: [22, 22] }), title: s.name })
-      .bindPopup(`<b>${esc(s.name)}</b><br>${esc(r.name)}<br><a href="${LIVE_SHUTTLE_URL}" target="_blank" rel="noopener">Live arrivals ↗</a>`).addTo(layers.shuttle));
+  const stops = []; // one marker per stop, listing every line that serves it
+  for (const r of S.shuttles) {
+    const lines = r.lines ?? [[...r.stops.map((s) => [s.lat, s.lng]), [r.stops[0].lat, r.stops[0].lng]]];
+    for (const l of lines) L.polyline(l, { color: r.color, weight: 5, opacity: 0.85, dashArray: r.sample ? '8 8' : null }).bindTooltip(`${r.name} shuttle`).addTo(layers.shuttle);
+    for (const s of r.stops) {
+      const same = stops.find((x) => distance(x, s) < 20);
+      if (same) { if (!same.routes.includes(r)) same.routes.push(r); } else stops.push({ ...s, routes: [r] });
+    }
+  }
+  for (const s of stops) {
+    L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', html: '<div class="smark" aria-hidden="true">🚌</div>', iconSize: [22, 22] }), title: `Shuttle stop: ${s.name}` })
+      .bindPopup(`<b>🚌 ${esc(s.name)}</b><br>${s.routes.map((r) => `<span class="tag" style="border-color:${r.color}">${esc(r.name)}</span>`).join(' ')}
+        <br><a href="${LIVE_SHUTTLE_URL}" target="_blank" rel="noopener">Schedules &amp; live arrivals ↗</a>
+        <div class="ctx-menu"><button data-route-to="pt:${s.lat},${s.lng}" data-label="${esc(`shuttle stop ${s.name}`)}">Directions here</button></div>`).addTo(layers.shuttle);
   }
 }
 function drawSafety() {
@@ -217,6 +236,11 @@ function drawSafety() {
 }
 function drawOutlines() {
   layers.outlines.clearLayers();
+  for (const c of activeConstruction(S.tu)) {
+    L.polygon(c.polygon, { color: '#ea580c', weight: 2, dashArray: '6 4', fillColor: '#fb923c', fillOpacity: 0.18 })
+      .bindPopup(`<b>🚧 Construction: ${esc(c.name ?? 'work area')}</b>${c.opens ? `<br>Expected to open ${esc(c.opens)}` : ''}<br><span class="muted">Paths nearby may be fenced off.</span>${c.link ? `<br><a href="${esc(c.link)}" target="_blank" rel="noopener">Campus construction ↗</a>` : ''}`)
+      .addTo(layers.outlines);
+  }
   for (const o of S.osm?.buildings ?? []) {
     const match = o.ourId && byId.get(o.ourId);
     L.polygon(o.outline, { weight: 1, color: match ? CATEGORIES[match.category].color : '#888', fillOpacity: match ? 0.25 : 0.08, interactive: !!match })
@@ -226,14 +250,20 @@ function drawOutlines() {
 // ---------------------------------------------------------------- accessibility
 let localAccess = [];
 try { localAccess = EDIT ? JSON.parse(localStorage.getItem('tigerpath.access')) ?? [] : []; } catch { /* none */ }
-const accessFeatures = () => [...ACCESS_FEATURES, ...localAccess];
+const doorName = (e) => (e.name && e.name !== e.buildingName ? e.name.replace(new RegExp(`^${e.buildingName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\((.*)\\)$`), '$1') : '');
+const tuEntrances = () => (S.tu?.entrances ?? []).filter((e) => e.building).map((e) => ({
+  type: e.opener ? 'automatic-door' : 'entrance', lat: e.lat, lng: e.lng, building: e.building, tu: true, where: doorName(e),
+  note: [e.name && e.name !== e.buildingName ? e.name : null, e.opener ? 'automatic door opener' : null, e.steps ? 'steps' : 'no steps', e.note].filter(Boolean).join(' · '),
+}));
+const accessFeatures = () => [...ACCESS_FEATURES, ...localAccess, ...tuEntrances()];
 const accessEntrances = (id) => accessFeatures().filter((f) => f.building === id && (f.type === 'entrance' || f.type === 'automatic-door'));
 const canvas = L.canvas({ padding: 0.3 });
 
 /** Step-free footpaths, stairs to avoid, rough surfaces, curb cuts, accessible parking, ramps/entrances/elevators. */
 function drawAccess() {
   layers.access.clearLayers();
-  if (S.osm) {
+  if (S.tu) drawTuAccess();
+  else if (S.osm) {
     const groups = { good: [], ok: [], rough: [], stairs: [] };
     for (const [a, list] of S.graph.adj) for (const e of list) {
       if (a > e.to || !e.path) continue;
@@ -256,10 +286,39 @@ function drawAccess() {
     }
   }
   for (const f of accessFeatures()) {
+    if (f.tu) continue; // drawn by drawTuAccess with TU's details
     const t = ACCESS_TYPES[f.type] ?? { label: f.type, icon: '♿' };
     L.marker([f.lat, f.lng], { icon: L.divIcon({ className: '', html: `<div class="amark" aria-hidden="true">${t.icon}</div>`, iconSize: [24, 24] }), title: t.label })
       .bindPopup(`<b>${t.icon} ${esc(t.label)}</b>${f.building ? `<br>${esc(byId.get(f.building)?.name ?? f.building)}` : ''}${f.note ? `<br>${esc(f.note)}` : ''}${f.verified ? `<br><span class="muted">Checked ${esc(f.verified)}</span>` : ''}`)
       .addTo(layers.access);
+  }
+}
+
+/** TU's accessibility survey: rated routes, stairs, accessible entrances, parking and paratransit stops. */
+const TU_RATING = { yes: ['#5b21b6', 5, null, 'Accessible'], limited: ['#a16207', 4, '2 5', 'Limited accessibility'], no: ['#dc2626', 4, '4 5', 'Not accessible'] };
+function drawTuAccess() {
+  const byRating = { yes: [], limited: [], no: [] };
+  for (const r of S.tu.accessRoutes) byRating[r.rating]?.push(r.line);
+  for (const [k, segs] of Object.entries(byRating)) {
+    const [color, weight, dashArray] = TU_RATING[k];
+    if (segs.length) L.polyline(segs, { renderer: canvas, color, weight, dashArray, opacity: 0.9, interactive: false }).addTo(layers.access);
+  }
+  for (const [lat, lng] of S.tu.stairs) L.circleMarker([lat, lng], { renderer: canvas, radius: 3.5, color: '#fff', weight: 1, fillColor: '#dc2626', fillOpacity: 1, interactive: false }).addTo(layers.access);
+  for (const e of S.tu.entrances) {
+    const b = byId.get(e.building);
+    L.marker([e.lat, e.lng], { icon: L.divIcon({ className: 'zd', html: '<div class="amark door" aria-hidden="true">♿</div>', iconSize: [18, 18] }), title: `Accessible entrance: ${e.name ?? e.buildingName}` })
+      .bindPopup(`<b>♿ Accessible entrance</b><br>${esc(b?.name ?? e.buildingName)}${e.name && e.name !== e.buildingName ? ` — ${esc(e.name)}` : ''}
+        <br>${e.opener ? 'Automatic door opener' : 'No automatic opener'}${e.door ? ` · ${esc(e.door.toLowerCase())}` : ''} · ${e.steps ? 'steps' : 'no steps'}${e.note ? `<br>${esc(e.note)}` : ''}
+        <div class="ctx-menu"><button data-route-to="pt:${e.lat},${e.lng}" data-label="${esc(`${b?.name ?? e.buildingName} (accessible entrance)`)}">Directions here</button></div>`).addTo(layers.access);
+  }
+  for (const p of S.tu.accessParking) {
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'zd', html: '<div class="pmark access" aria-hidden="true">♿</div>', iconSize: [24, 24] }), title: 'Accessible parking' })
+      .bindPopup(`<b>♿ Accessible parking</b><br>${esc(p.name ?? p.lot)}${p.spaces ? `<br>${p.spaces} space${p.spaces > 1 ? 's' : ''}` : ''}${p.floor ? ` · ${esc(p.floor)}` : ''}
+        <div class="ctx-menu"><button data-route-to="pt:${p.lat},${p.lng}" data-label="${esc(`accessible parking, ${p.name ?? p.lot}`)}">Directions here</button></div>`).addTo(layers.access);
+  }
+  for (const p of S.tu.paratransit) {
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'zd', html: '<div class="amark para" aria-hidden="true">🚐</div>', iconSize: [24, 24] }), title: `Paratransit stop: ${p.name}` })
+      .bindPopup(`<b>🚐 Paratransit stop</b><br>${esc(p.name)}<br><a href="https://www.towson.edu/parking/shuttle/paratransit.html" target="_blank" rel="noopener">Paratransit service ↗</a>`).addTo(layers.access);
   }
 }
 
@@ -273,21 +332,27 @@ function applyLayers() {
 
 // ---------------------------------------------------------------- routing graph
 function buildGraph() {
-  const pts = [...S.buildings, ...PARKING].map((p) => ({ id: p.id, lat: p.lat, lng: p.lng, label: p.name }));
+  const pts = [...S.buildings, ...S.parking].map((p) => ({ id: p.id, lat: p.lat, lng: p.lng, label: p.name }));
   if (S.osm) {
     S.graph = graphFromProcessed(S.osm);
-    const walk = S.graph.mainComponent(); // ignore isolated fragments (gated fields, private drives)
+    S.tuTagged = tagGraph(S.graph, S.tu); // TU's accessibility survey: rated routes and stairs
+    // the walkway network everyone can use; isolated fragments (gated fields, private drives) are ignored.
+    // Measured before TU's step-free-only connectors join some fragments to it.
+    const walk = S.graph.mainComponent();
+    S.tuTagged.added = addTuRoutes(S.graph, S.tu); // …and the step-free connectors OpenStreetMap lacks
+    for (const n of S.graph.nodes.keys()) if (isTuNode(n)) walk.add(n); // reachable for step-free routes
     for (const p of pts) { // connect each place to the 2 nearest walkway nodes
-      const near = S.graph.nearest(p, 2, (n) => walk.has(n.id));
+      const near = S.graph.nearest(p, 2, (n) => walk.has(n.id) && !isTuNode(n.id));
       S.graph.addNode(p.id, p.lat, p.lng, p.label);
       for (const n of near) if (n.d < 200) S.graph.addEdge(p.id, n.id);
     }
     S.graphSource = 'osm';
+    S.mainNodes = walk;
   } else {
     S.graph = buildSeedGraph(pts);
     S.graphSource = 'seed';
+    S.mainNodes = S.graph.mainComponent();
   }
-  S.mainNodes = S.graph.mainComponent();
   // precompute "near an emergency phone" for well-lit routing
   const phones = safety.filter((s) => s.kind === 'phone');
   if (phones.length) {
@@ -309,33 +374,48 @@ function buildGraph() {
 }
 
 let tmpSeq = 0;
+/** Nodes of TU's step-free-only connectors: places link to regular walkways, never straight onto these. */
+const isTuNode = (id) => typeof id === 'string' && id.startsWith('tu:');
 /** Resolve a place to a graph node id. Returns { id, label, latlng, cleanup }. */
-function placeNode(place, profile = 'standard') {
+function placeNode(place, door = null) {
   if (!place) return null;
   if (place.type === 'building') {
     const b = byId.get(place.id); if (!b) return null;
-    const doors = profile === 'accessible' ? accessEntrances(b.id) : [];
-    if (doors.length) { // ♿ route to the nearest listed accessible entrance, not the building center
-      const door = doors[0];
-      const n = placeNode({ type: 'point', lat: door.lat, lng: door.lng, label: `${b.name} (accessible entrance)` });
-      return n;
-    }
+    if (door) return placeNode({ type: 'point', lat: door.lat, lng: door.lng, label: `${b.name} (accessible entrance)`, door: true }); // ♿ route to a listed accessible entrance
     return { id: b.id, label: b.name, latlng: [b.lat, b.lng], cleanup() {} };
   }
   if (place.type === 'parking') { const p = parkingById.get(place.id); return p && S.graph.nodes.has(p.id) && { id: p.id, label: p.name, latlng: [p.lat, p.lng], cleanup() {} }; }
   const pt = place.type === 'me' ? S.me : place;
   if (!pt) return null;
   const id = '@tmp' + ++tmpSeq;
-  const near = S.graph.nearest(pt, 3, (n) => S.mainNodes.has(n.id));
+  const near = S.graph.nearest(pt, 3, (n) => S.mainNodes.has(n.id) && !isTuNode(n.id));
   if (!near.length || near[0].d > 300) return { far: true, cleanup() {} }; // walking paths only cover campus; don't invent long straight-line links
+  if (place.door) { // an accessible entrance also joins TU's surveyed accessible route next to it
+    const tuNode = S.graph.nearest(pt, 1, (n) => isTuNode(n.id) && S.mainNodes.has(n.id))[0];
+    if (tuNode && tuNode.d < 40 && !near.some((n) => n.id === tuNode.id)) near.push(tuNode);
+  }
   S.graph.addNode(id, pt.lat, pt.lng);
   near.forEach((n) => S.graph.addEdge(id, n.id));
   const label = place.type === 'me' ? 'your location' : place.label ?? 'dropped pin';
   return { id, label, latlng: [pt.lat, pt.lng], cleanup() { near.forEach((n) => S.graph.removeEdge(id, n.id)); S.graph.nodes.delete(id); S.graph.adj.delete(id); } };
 }
 const speed = () => S.pace; // one pace for every option, so times compare fairly (set in My account)
+/** Step-free routes start/end at a building's accessible entrances (up to 4 tried, the shortest wins). */
+function doorsFor(place, profile) {
+  if (profile !== 'accessible' || place?.type !== 'building') return [null];
+  const doors = accessEntrances(place.id);
+  return doors.length ? doors.slice(0, 4) : [null];
+}
 function computeRoute(fromPlace, toPlace, profile = 'standard', extra = {}) {
-  const a = placeNode(fromPlace, profile), b = placeNode(toPlace, profile);
+  let best = null;
+  for (const fd of doorsFor(fromPlace, profile)) for (const td of doorsFor(toPlace, profile)) {
+    const r = routeVia(fromPlace, toPlace, profile, extra, fd, td);
+    if (!best || (r?.res && (!best.res || r.res.dist < best.res.dist))) best = r;
+  }
+  return best;
+}
+function routeVia(fromPlace, toPlace, profile, extra, fromDoor, toDoor) {
+  const a = placeNode(fromPlace, fromDoor), b = placeNode(toPlace, toDoor);
   try {
     if (!a || !b) return null;
     if (a.far || b.far) return { far: true, a, b, res: null };
@@ -418,7 +498,7 @@ function attachTypeahead(input, list, onPick, { allowMe = false } = {}) {
     }
     list.innerHTML = items.map((it, i) => it.type === 'me'
       ? `<li role="option" id="${list.id || input.id}-o${i}" data-i="${i}"><span class="code">📍</span><div>My location</div></li>`
-      : `<li role="option" id="${list.id || input.id}-o${i}" data-i="${i}"><span class="code">${esc(it.b.id)}</span><div>${esc(it.b.name)}${it.room ? ` · Room ${esc(it.room.room)}` : ''}
+      : `<li role="option" id="${list.id || input.id}-o${i}" data-i="${i}"><span class="code">${esc(tag(it.b))}</span><div>${esc(it.b.name)}${it.room ? ` · Room ${esc(it.room.room)}` : ''}
           <div class="sub">${esc(CATEGORIES[it.b.category].label)}${it.b.depts?.length ? ' · ' + esc(it.b.depts.slice(0, 2).join(', ')) : ''}</div></div></li>`).join('');
     list.hidden = false; input.setAttribute('aria-expanded', 'true');
   };
@@ -461,7 +541,7 @@ function renderCategoryList(bs) {
   $('#detail').hidden = true; $('#home').hidden = false;
   $('#nearestOut').innerHTML = `<h2 class="h">${esc(CATEGORIES[S.category].label)} · ${bs.length}</h2><ul class="list">${bs.map((b) => {
     const st = openStatus(b.hours);
-    return `<li><span class="code">${esc(b.id)}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}${st.label ? `<div class="sub ${st.open ? 'status open' : 'status closed'}" style="margin:0">${esc(st.label)}</div>` : ''}</button></li>`;
+    return `<li><span class="code">${esc(tag(b))}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}${st.label ? `<div class="sub ${st.open ? 'status open' : 'status closed'}" style="margin:0">${esc(st.label)}</div>` : ''}</button></li>`;
   }).join('')}</ul>`;
 }
 
@@ -484,7 +564,7 @@ function renderDetail() {
   const fav = S.favs.includes(b.id);
   el.innerHTML = `
     <button class="back" id="backBtn">← Back</button>
-    <div class="detail-head"><span class="code" style="background:${cat.color};color:#fff;font-size:.9rem;padding:6px 8px">${esc(b.id)}</span>
+    <div class="detail-head"><span class="code" style="background:${cat.color};color:#fff;font-size:.9rem;padding:6px 8px">${esc(tag(b))}</span>
       <div><h2>${esc(b.name)}</h2><span class="badge">${cat.icon} ${cat.label}</span></div></div>
     ${S.room ? `<div class="room-box"><b>Room ${esc(S.room.room)}</b> · ${typeof S.room.floor === 'number' ? `Floor ${S.room.floor}` : esc(S.room.floor)}
       <div class="sub muted">Room numbers usually start with the floor number. Elevators are near the main entrance.</div></div>` : ''}
@@ -496,7 +576,8 @@ function renderDetail() {
       <button class="btn" id="favBtn" aria-pressed="${fav}">${fav ? '★ Saved' : '☆ Save'}</button>
       <button class="btn" id="shareBtn">Share</button>
     </div>
-    ${b.depts?.length ? `<h2 class="h">Inside</h2><div>${b.depts.map((d) => `<span class="tag">${esc(d)}</span>`).join('')}</div>` : ''}
+    ${b.tu?.address ? `<p class="muted" style="margin:6px 0 0">${esc(b.tu.address)}</p>` : ''}
+    ${b.depts?.length ? `<h2 class="h">Inside</h2>${insideList(b)}` : ''}
     ${b.food?.length ? `<h2 class="h">Food here</h2><div>${b.food.map((f) => `<span class="tag">🍴 ${esc(f)}</span>`).join('')}</div>` : ''}
     ${b.amenities?.length ? `<h2 class="h">Amenities</h2><div>${b.amenities.map((a) => `<span class="tag">${esc(AMENITY_LABELS[a] ?? a)}</span>`).join('')}</div>` : ''}
     ${b.hours ? `<h2 class="h">Hours</h2><table class="hours">${weekTable(b.hours).map((r) => `<tr class="${r.day === today ? 'today' : ''}"><td>${r.day}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>` : ''}
@@ -510,23 +591,48 @@ function renderDetail() {
   $('#shareBtn').onclick = () => share(location.href, b.name);
   $('#stepFree').onclick = () => { S.requestedKind = 'stepfree'; $('#dirTo').click(); };
   const near = S.buildings.filter((x) => x.id !== b.id).map((x) => ({ x, d: distance(b, x) })).sort((p, q) => p.d - q.d).slice(0, 4);
-  $('#nearby').innerHTML = near.map(({ x, d }) => `<li><span class="code">${esc(x.id)}</span><button class="link" data-b="${esc(x.id)}">${esc(x.name)}</button><span class="muted">${formatDistance(d, S.units)}</span></li>`).join('');
+  $('#nearby').innerHTML = near.map(({ x, d }) => `<li><span class="code">${esc(tag(x))}</span><button class="link" data-b="${esc(x.id)}">${esc(x.name)}</button><span class="muted">${formatDistance(d, S.units)}</span></li>`).join('');
+}
+
+/** Offices and departments in a building; TU's ones link to their pages. Long lists fold away. */
+function insideList(b) {
+  const links = new Map((b.offices ?? []).map((o) => [o.name, o.link]));
+  const tags = b.depts.map((d) => links.get(d) ? `<a class="tag" href="${esc(links.get(d))}" target="_blank" rel="noopener">${esc(d)}</a>` : `<span class="tag">${esc(d)}</span>`);
+  if (tags.length <= 10) return `<div>${tags.join('')}</div>`;
+  return `<div>${tags.slice(0, 8).join('')}</div><details class="more"><summary>${tags.length - 8} more offices</summary><div>${tags.slice(8).join('')}</div></details>`;
 }
 
 function accessCard(b) {
   const feats = accessFeatures().filter((f) => f.building === b.id);
-  const parking = (S.osm?.access?.parking ?? []).map((p) => ({ p, d: distance(b, p) })).sort((x, y) => x.d - y.d)[0];
-  const items = feats.map((f) => `<li>${ACCESS_TYPES[f.type]?.icon ?? '♿'} ${esc(ACCESS_TYPES[f.type]?.label ?? f.type)}${f.note ? ` — ${esc(f.note)}` : ''}</li>`);
-  if (parking && parking.d < 400) items.push(`<li>♿ Accessible parking ${formatDistance(parking.d, S.units)} away (${parking.p.capacity} space${parking.p.capacity > 1 ? 's' : ''})</li>`);
+  const nearest = (list) => list.map((p) => ({ p, d: distance(b, p) })).sort((x, y) => x.d - y.d)[0];
+  const doors = feats.filter((f) => f.tu);
+  const items = feats.filter((f) => !f.tu).map((f) => `<li>${ACCESS_TYPES[f.type]?.icon ?? '♿'} ${esc(ACCESS_TYPES[f.type]?.label ?? f.type)}${f.note ? ` — ${esc(f.note)}` : ''}</li>`);
+  if (doors.length) {
+    const allAuto = doors.every((d) => d.type === 'automatic-door');
+    items.unshift(`<li>♿ ${doors.length} accessible entrance${doors.length > 1 ? 's' : ''}${allAuto ? `, ${doors.length > 1 ? 'all ' : ''}with automatic door openers` : ''}:
+      <ul class="doors">${doors.map((d) => `<li>${esc(d.where || 'Main entrance')}</li>`).join('')}</ul></li>`);
+  }
+  if (S.tu) {
+    const parking = nearest(S.tu.accessParking);
+    if (parking && parking.d < 500) items.push(`<li>🅿️ Accessible parking ${formatDistance(parking.d, S.units)} away — ${esc(parking.p.name ?? parking.p.lot)}${parking.p.spaces ? ` (${parking.p.spaces} space${parking.p.spaces > 1 ? 's' : ''})` : ''}</li>`);
+    const para = nearest(S.tu.paratransit);
+    if (para && para.d < 500) items.push(`<li>🚐 Paratransit stop ${formatDistance(para.d, S.units)} away — ${esc(para.p.name)}</li>`);
+  } else {
+    const parking = nearest(S.osm?.access?.parking ?? []);
+    if (parking && parking.d < 400) items.push(`<li>♿ Accessible parking ${formatDistance(parking.d, S.units)} away (${parking.p.capacity} space${parking.p.capacity > 1 ? 's' : ''})</li>`);
+  }
+  if (b.tu?.restrooms) items.push(`<li>🚻 All-gender restrooms: ${esc(b.tu.restrooms)}</li>`);
+  if (b.tu?.lactation) items.push(`<li>🍼 Lactation room: ${esc(b.tu.lactation)}</li>`);
   return `<ul class="access-list">${items.join('') || '<li class="muted">No accessible entrances, ramps or elevators mapped for this building yet.</li>'}</ul>
+    ${S.tu ? '<p class="hint">From TU’s official campus map (preliminary data, under review by TU).</p>' : ''}
     <div class="btn-row"><button class="btn small" id="stepFree">♿ Step-free route here</button>
-    <a class="btn small" href="${OFFICIAL_ACCESS_MAP_URL}" target="_blank" rel="noopener">TU accessibility map ↗</a></div>`;
+    <a class="btn small" href="${S.tu ? 'https://maps.towson.edu/' : OFFICIAL_ACCESS_MAP_URL}" target="_blank" rel="noopener">TU campus map ↗</a></div>`;
 }
 
 function renderHome() {
   $('#nearestOut').innerHTML = '';
   renderPulseNow();
-  const li = (id) => { const b = byId.get(id); return b ? `<li><span class="code">${esc(b.id)}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}</button></li>` : ''; };
+  const li = (id) => { const b = byId.get(id); return b ? `<li><span class="code">${esc(tag(b))}</span><button class="link" data-b="${esc(b.id)}">${esc(b.name)}</button></li>` : ''; };
   const home = byId.get(S.settings.home);
   $('#favs').innerHTML = (home ? `<li><span class="code">🏠</span><button class="link" data-b="${esc(home.id)}">${esc(home.name)}<div class="sub muted">Home</div></button>
       <button class="btn small" data-go='${esc(JSON.stringify({ type: 'building', id: home.id }))}'>Directions home</button></li>` : '')
@@ -555,8 +661,8 @@ function findNearest(q) {
     locate(); return;
   }
   const cands = q.parking
-    ? PARKING.filter((p) => !S.permit || p.permits.includes(S.permit)).map((p) => ({ place: { type: 'parking', id: p.id }, name: p.name, id: 'P' }))
-    : S.buildings.filter(q.match).filter((b) => b.id !== S.selected).map((b) => ({ place: { type: 'building', id: b.id }, name: b.name, id: b.id, st: openStatus(b.hours) }))
+    ? S.parking.filter((p) => !S.permit || p.permits.includes(S.permit)).map((p) => ({ place: { type: 'parking', id: p.id }, name: p.name, id: 'P' }))
+    : S.buildings.filter(q.match).filter((b) => b.id !== S.selected).map((b) => ({ place: { type: 'building', id: b.id }, name: b.name, id: tag(b), st: openStatus(b.hours) }))
       .filter((c) => !q.openOnly || c.st.open !== false);
   const ranked = cands.map((c) => ({ ...c, r: computeRoute(origin, c.place, q.profile ?? 'standard') })).filter((c) => c.r?.res)
     .sort((a, b) => a.r.minutes - b.r.minutes).slice(0, 4);
@@ -577,7 +683,7 @@ document.addEventListener('click', (e) => {
   if (rt) {
     const [type, ...rest] = (rt.dataset.routeTo ?? rt.dataset.routeFrom).split(':');
     const v = rest.join(':');
-    const place = type === 'pt' ? (([lat, lng]) => ({ type: 'point', lat: +lat, lng: +lng, label: 'dropped pin' }))(v.split(',')) : { type, id: v };
+    const place = type === 'pt' ? (([lat, lng]) => ({ type: 'point', lat: +lat, lng: +lng, label: rt.dataset.label ?? 'dropped pin' }))(v.split(',')) : { type, id: v };
     setPlace(rt.dataset.routeTo ? 'to' : 'from', place);
     map.closePopup(); showTab('directions');
   }
@@ -649,6 +755,7 @@ function updateRoute({ fit = true, keepChoice = false } = {}) {
     { alwaysStepFree: accessibleDoor || preferredKind() === 'stepfree' || S.requestedKind === 'stepfree' });
   if (!S.options.length) { S.lastRoute = null; layers.route.clearLayers(); out.innerHTML = '<p class="hint">No route found. If “Always avoid stairs” is on, there may be no step-free way — try turning it off in My account.</p>'; return; }
   const want = keepChoice && optionFor(S.routeKind) ? S.routeKind : (S.requestedKind ?? preferredKind());
+  S.wantStepFree = want === 'stepfree';
   S.requestedKind = null;
   const sel = optionFor(want) ?? S.options[0];
   S.routeKind = sel.kind; S.lastRoute = sel.r;
@@ -677,10 +784,11 @@ function renderRouteOut() {
     ${S.options.length === 1 ? '<p class="hint">This is the only sensible way here — the other route types follow the same path.</p>' : ''}
     <div class="summary"><span class="big">${formatMinutes(r.minutes)}</span><span class="muted">${formatDistance(r.res.dist, S.units)} · arrive ${arrive}</span></div>
     ${sel.stairs && stepfree ? `<p class="hint">⚠️ Includes stairs (red dashes). The ${esc(stepfree.label.toLowerCase())} option avoids them.</p>` : ''}
+    ${S.wantStepFree && !optionFor('stepfree') ? `<p class="hint">♿ No step-free route found${S.to?.type === 'building' ? ` to ${esc(byId.get(S.to.id)?.name)}` : ''}. ${S.tu ? 'TU’s accessibility survey lists no accessible entrance or step-free path there. ' : ''}Accessibility &amp; Disability Services can help: <a href="tel:+14107042638">410-704-2638</a>.</p>` : ''}
     <div class="btn-row"><button class="btn primary" id="liveBtn">${S.live ? '■ Stop' : '▶ Start walking'}</button><button class="btn" id="wwmBtn">🛡️ Walk With Me</button><button class="btn" id="shareRoute">Share</button><button class="btn" id="printRoute">Print</button></div>
     <ol class="steps">${r.steps.map((s, i) => `<li data-step="${i}"><span class="ico">${s.type === 'arrive' ? '★' : s.type === 'depart' ? '●' : /left/.test(s.text) ? '↰' : /right/.test(s.text) ? '↱' : '↑'}</span>
       <span>${esc(s.text)}</span><span class="d">${s.dist ? formatDistance(s.dist, S.units) : ''}</span></li>`).join('')}</ol>
-    ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : '<p class="hint">Walkway data © OpenStreetMap contributors.</p>'}`;
+    ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : `<p class="hint">Walkway data © OpenStreetMap contributors.${S.tu && sel.kind === 'stepfree' ? ' Accessibility data: Towson University campus map (preliminary).' : ''}</p>`}`;
   out.querySelector('.route-opts').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) selectRoute(k); };
   $('#routeOut .steps').onclick = (e) => { const li = e.target.closest('[data-step]'); if (li) { const s = r.steps[+li.dataset.step]; flyTo([s.at.lat, s.at.lng], 19); } };
   $('#shareRoute').onclick = () => share(location.href, `Walk to ${r.b.label}`);
@@ -843,18 +951,34 @@ function renderLayersTab() {
   renderAccessLegend();
   $('#permit').innerHTML = '<option value="">All permits</option>' + Object.entries(PERMIT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   $('#permit').onchange = (e) => { S.permit = e.target.value; drawParking(); };
-  $('#shuttleNote').innerHTML = `Shuttle lines shown are a sample. <a href="${LIVE_SHUTTLE_URL}" target="_blank" rel="noopener">Official shuttle info ↗</a>`;
+  $('#shuttleNote').innerHTML = S.tu
+    ? `Shuttle lines and stops from TU’s campus map: ${S.shuttles.map((r) => `<span class="lg-inline" style="background:${r.color}"></span>${esc(r.name)}`).join(', ')}. <a href="${LIVE_SHUTTLE_URL}" target="_blank" rel="noopener">Schedules &amp; live arrivals ↗</a>`
+    : `Shuttle lines shown are a sample. <a href="${LIVE_SHUTTLE_URL}" target="_blank" rel="noopener">Official shuttle info ↗</a>`;
   const phones = safety.length;
   $('#dataNote').innerHTML = (S.graphSource === 'osm'
     ? `Walkways from OpenStreetMap (${new Date(S.osm.generated).toLocaleDateString()}): ${S.osm.edges.length.toLocaleString()} path segments.`
     : 'Routing uses an approximate path network between buildings. Run <code>npm run fetch-osm</code> to load real walkways.')
     + (phones ? ` ${phones} emergency phones/AEDs loaded.` : ' No verified emergency phone data loaded yet.')
-    + (S.graphSource === 'osm' ? ' Building locations from OpenStreetMap footprints.' : ' Building positions are approximate until verified.');
+    + (S.graphSource === 'osm' ? ' Building locations from OpenStreetMap footprints.' : ' Building positions are approximate until verified.')
+    + (S.tu ? ` Accessibility, shuttle, parking and office data from <a href="https://maps.towson.edu/" target="_blank" rel="noopener">TU’s official campus map</a> (${new Date(S.tu.fetched + 'T12:00').toLocaleDateString()}; TU marks it preliminary).` : '');
 }
 
 function renderAccessLegend() {
   const el = $('#accessLegend'); if (!el) return;
   el.hidden = !S.layers.access;
+  if (S.tu) {
+    const spaces = S.tu.accessParking.reduce((n, p) => n + (p.spaces ?? 0), 0);
+    el.innerHTML = `<ul class="legend">
+      <li><span class="lg" style="background:#5b21b6;height:5px"></span>Accessible route</li>
+      <li><span class="lg dash" style="color:#a16207"></span>Limited accessibility</li>
+      <li><span class="lg dash" style="color:#dc2626"></span>Not accessible — avoid</li>
+      <li><span class="lg dot" style="background:#dc2626"></span>Stairs</li>
+      <li><span class="amark sm" aria-hidden="true">♿</span>Accessible entrance (automatic door)</li>
+      <li><span class="amark sm para" aria-hidden="true">🚐</span>Paratransit stop</li></ul>
+    <p class="hint">${S.tu.entrances.length} accessible entrances, ${spaces} accessible parking spaces and ${S.tu.paratransit.length} paratransit stops, from TU’s official campus map survey.
+      Step-free directions use TU’s route ratings and go to a building’s accessible entrance.</p>`;
+    return;
+  }
   el.innerHTML = `<ul class="legend">
       <li><span class="lg" style="background:#5b21b6;height:5px"></span>Marked wheelchair-friendly</li>
       <li><span class="lg" style="background:#7c3aed;opacity:.6"></span>Step-free path</li>
@@ -948,6 +1072,25 @@ async function loadOsm() {
     }
     safety.push(...data.safety);
   } catch { /* no OSM data bundled — seed data is used */ }
+}
+
+/** TU's own campus map data (scripts/fetch-tu.mjs): accessibility, shuttles, parking, offices. */
+async function loadTu() {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/tu-campus.json`);
+    if (!res.ok || !res.headers.get('content-type')?.includes('json')) return;
+    S.tu = await res.json();
+  } catch { return; } // not bundled — TigerPath's own sample data is used
+  for (const x of mergeBuildings(S.buildings, S.tu)) { S.buildings.push(x); byId.set(x.id, x); }
+  index = createIndex(S.buildings);
+  if (S.tu.parking?.length) {
+    S.parking = S.tu.parking;
+    parkingById.clear();
+    for (const p of S.parking) parkingById.set(p.id, p);
+    for (const [old, now] of Object.entries(LEGACY_PARKING)) if (parkingById.has(now)) parkingById.set(old, parkingById.get(now));
+  }
+  if (S.tu.shuttles?.length) S.shuttles = S.tu.shuttles;
+  map.attributionControl.addAttribution('Campus data: <a href="https://maps.towson.edu/">Towson University</a>');
 }
 
 // ---------------------------------------------------------------- accounts, activity, reminders
@@ -1210,6 +1353,7 @@ window.__tigerpath = { map }; // for the browser smoke test
   await loadBasemapMeta();
   setBasemap(S.basemap);
   await loadOsm();
+  await loadTu();
   buildGraph();
   await initAccounts();
   applyTheme();

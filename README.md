@@ -73,10 +73,23 @@ positions, 14,000+ walkway segments with stairs, lighting and wheelchair tags, 1
 areas, and food places. Many campus footprints were traced from TU engineering drawings. The workflow saves each
 download to the `osm-data` branch; copy `public/data/osm-campus.json` from there into `main` to update the app.
 
+**From TU's official campus map (refreshed monthly by the *Fetch TU campus map data* workflow, or `npm run fetch-tu`):**
+TU's Center for GIS publishes the layers behind [maps.towson.edu](https://maps.towson.edu/) as public ArcGIS services.
+`scripts/fetch-tu.mjs` saves the parts TigerPath uses to `public/data/tu-campus.json`:
+- 78 surveyed **accessible entrances** (door type, automatic openers), 162 **stairs**, 270 **rated accessible route**
+  segments, 39 **accessible parking** spots and 44 **paratransit stops**
+- the six real **shuttle lines** and their stops, replacing the old sample route
+- 26 **parking garages and lots** with TU's permit types (Core, Overflow, Resident, Faculty/Staff), space counts,
+  visitor and EV spaces
+- **construction areas**, the **office/department index** (228 offices, so "registrar" or "financial aid" find the right
+  building), all-gender restrooms and lactation rooms, and 15 buildings TigerPath didn't have (Public Safety, the Armory…)
+
+TU marks this data "preliminary, under review" and publishes it "as is". The app credits it and links to TU's map. Ask TU's
+Center for GIS (CGIS@towson.edu) before relying on it officially; they are also the right people to report errors to.
+Without the file, the app falls back to its own sample data in `src/data/places.js`.
+
 **Still needs checking against current university info:**
 - **Hours** are placeholders, marked `verified: false`; the app labels them "sample hours — verify".
-- **The shuttle route is a sample.** Replace `SHUTTLES` in `src/data/places.js` with real routes (or a GTFS feed).
-- **Departments and parking permit types** should be confirmed with TU.
 - **Smith Hall** is flagged as under renovation. Remove the `note` once it reopens.
 
 To fine-tune any pin, open the site with `?edit=1`, switch to **Satellite**, drag the pin, click **Download buildings.js**
@@ -123,12 +136,21 @@ reminders would need a small backend (for example a Supabase Edge Function with 
 
 ## Accessibility data
 
-The ♿ layer (Layers tab, also switched on automatically for ♿ routes) shows step-free footpaths, stairs and raised curbs
-to avoid, rough surfaces, curb cuts and accessible parking from OpenStreetMap. Accessible routing never uses stairs,
-raised curbs or paths marked not wheelchair-accessible. It prefers ramps and curb cuts, and can optionally avoid steep or
-rough paths too.
+The ♿ layer (Layers tab, also switched on automatically for ♿ routes) shows TU's accessibility survey: routes rated
+accessible, limited or not accessible, stairs, accessible entrances, accessible parking and paratransit stops.
 
-**Gap:** OpenStreetMap has **no ramps, elevators or accessible entrances** mapped for Towson yet. Add them with the
+Step-free routing combines OpenStreetMap walkways with TU's survey (`src/lib/tu.js`):
+- walkways running along a TU-rated segment take its rating; "not accessible" ones are never used;
+- walkways next to a TU stairs point count as stairs, unless TU rates that stretch accessible;
+- TU's accessible segments are added as **step-free-only** connectors where OpenStreetMap lacks them (e.g. the ramp to
+  a building's accessible door). Regular routes never use them;
+- step-free routes start and end at a building's **accessible entrance** (the closest of up to four).
+
+With TU's data, every building except Scarborough Hall has a step-free route from every other building (TU lists no
+accessible entrance there and rates the paths around it not accessible; the app says so and gives ADS's number).
+
+Without TU's data the layer falls back to OpenStreetMap: step-free footpaths, stairs, raised curbs, rough surfaces, curb
+cuts and accessible parking. Ramps, elevators or extra entrances can also be added with the
 editor (`?edit=1` → Accessibility tools: click the map, add a note, then **Download accessibility.js** and replace
 `src/data/accessibility.js`). Once a building has an accessible entrance listed, ♿ routes go to that door instead of the
 building's center. This is best done with Accessibility & Disability Services and checked in person, using TU's
@@ -165,13 +187,14 @@ cached on each phone for 20 minutes.
 ```
 src/
   data/buildings.js   buildings, categories, amenities, hours  ← edit me
-  data/places.js      parking, shuttles, closures, safety       ← edit me
+  data/places.js      fallback parking + shuttles, closures, safety
   lib/graph.js        walking graph, A* routing, routing profiles, turn-by-turn
   lib/search.js       fuzzy search + room-number parsing
   lib/hours.js        open-now / weekly hours
   lib/schedule.js     class planner + .ics export
   data/accessibility.js  ramps, elevators, accessible entrances  ← edit me (or use ?edit=1)
   lib/osm.js          OpenStreetMap → routing graph (+ ramps, curbs, surfaces)
+  lib/tu.js           TU's campus map data → routing graph, buildings, offices
   lib/activity.js     GPS distance filter, step detector, goals, streaks
   lib/reminders.js    when to remind for each class
   lib/challenges.js   weekly challenges, badges, building visits
@@ -193,6 +216,7 @@ src/
 supabase/schema.sql   cloud accounts table + security rules
   main.js             app UI (Leaflet map, panels, URL state)
 scripts/fetch-osm.mjs
+scripts/fetch-tu.mjs  TU's official campus map layers → public/data/tu-campus.json
 public/sw.js          offline support
 public/tiles/         self-hosted map tiles (built by the Build self-hosted map workflow)
 scripts/build-basemap.mjs  turns a Protomaps extract into tile files

@@ -1,0 +1,46 @@
+name: Fetch TU campus map data
+
+# Refreshes public/data/tu-campus.json from the public layers behind TU's
+# official campus map (maps.towson.edu): accessible entrances, stairs, rated
+# accessible routes, shuttle lines, parking, construction areas and the office
+# index. Runs monthly; run it from the Actions tab any time.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 8 2 * *'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run fetch-tu
+      - run: npm test
+
+      - name: Commit and redeploy if the data changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "obanex"
+          git config user.email "69535465+obanex@users.noreply.github.com"
+          # a new fetch date alone isn't a change
+          node -e "
+            const fs = require('fs'); const { execSync } = require('child_process');
+            const strip = (s) => s.replace(/\"fetched\":\"[^\"]*\",?/, '');
+            const now = strip(fs.readFileSync('public/data/tu-campus.json', 'utf8'));
+            const before = strip(execSync('git show HEAD:public/data/tu-campus.json').toString());
+            process.exit(now === before ? 1 : 0);
+          " || { echo "TU data unchanged"; exit 0; }
+          git add public/data/tu-campus.json
+          git commit -m "Update TU campus map data $(date -u +%F)"
+          git push
+          gh workflow run deploy.yml --ref main

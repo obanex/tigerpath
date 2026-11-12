@@ -16,7 +16,7 @@ export const TOUR = {
       lookFor: 'The Admissions office, where TU’s guided campus tours begin.' },
     { building: 'WVC', title: 'West Village Commons',
       text: 'Dining and study space at the center of West Village, a neighborhood of residence halls on the west side of campus. Panda Express and Einstein Bros. Bagels are inside.',
-      lookFor: 'The residence halls around you: Barton, Douglass, Tubman, Marshall and West Village 1 and 2.' },
+      lookFor: 'The residence halls around you: Barton, Douglass, Tubman, Marshall, Harris and Barnes.' },
     { building: 'BU', title: 'Burdick Hall',
       text: 'Home of Campus Recreation — the student fitness center — and the Kinesiology department. Johnny Unitas Stadium and SECU Arena, where the Tigers play, are a short walk south.',
       lookFor: 'Schuerholz Park, TU’s baseball field, right next door.' },

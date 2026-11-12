@@ -73,9 +73,9 @@ await check('Self-hosted map draws (no outside tile server)', async () => {
   const n = await p1.evaluate(() => [...document.querySelectorAll('.leaflet-tile-pane canvas')].filter((c) => { try { return c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data[3] > 0; } catch { return false; } }).length);
   expect(n > 0, 'no map tiles drawn'); return `${n} tiles drawn`;
 });
-await check('45 building pins + OSM footprints', async () => {
+await check('60 building pins (45 + 15 from TU’s map) + OSM footprints', async () => {
   const pins = await p1.locator('.bmark').count(), polys = await p1.locator('.leaflet-overlay-pane path').count();
-  expect(pins === 45, `${pins} pins`); expect(polys > 40, `${polys} footprints`); return `${pins} pins, ${polys} footprints`;
+  expect(pins === 60, `${pins} pins`); expect(polys > 40, `${polys} footprints`); return `${pins} pins, ${polys} footprints`;
 });
 const searches = [['cook', 'CK'], ['LA', 'LA'], ['registrar', 'ES'], ['computer science', 'YR'], ['stephns', 'ST'], ['chick fil a', 'UU'], ['health center', 'WW'], ['paca', 'WV1']];
 await check(`Search (${searches.length} queries: name, code, department, typo, food, old name)`, async () => {
@@ -111,6 +111,21 @@ await check('Layers: shuttle, parking permit filter, ♿ layer + legend, satelli
   expect(await p1.isVisible('#accessLegend'), 'no accessibility legend');
   await p1.click('#basemaps button[data-v="satellite"]'); await p1.click('#basemaps button[data-v="map"]');
   return (await text(p1.locator('#accessLegend .hint'))).slice(0, 60);
+});
+await check('TU official data: real shuttle lines, permits, office search, entrances', async () => {
+  const note = await text(p1.locator('#shuttleNote'));
+  expect(/Gold/.test(note) && !/sample/i.test(note), `shuttle note: ${note.slice(0, 80)}`);
+  const permits = await p1.locator('#permit option').allInnerTexts();
+  expect(permits.includes('Core') && permits.includes('Overflow'), `permits: ${permits}`);
+  await p1.click('#tab-explore');
+  await p1.fill('#q', 'registrar'); await p1.waitForTimeout(300);
+  const hit = await text(p1.locator('#qResults li').first());
+  expect(/Enrollment Services/.test(hit), `registrar → ${hit}`);
+  await p1.keyboard.press('Enter'); await p1.waitForTimeout(500);
+  const card = await text(p1.locator('#detail'));
+  expect(/accessible entrance/i.test(card) && /Accessible parking/.test(card), `ES card: ${card.slice(0, 120)}`);
+  await p1.click('#backBtn');
+  return `${note.split(':')[1]?.split('.')[0]?.trim().slice(0, 60)} · registrar → ES`;
 });
 await check('Zoomed out: one campus marker instead of 45 pins', async () => {
   await p1.click('#tab-explore');
@@ -396,7 +411,7 @@ await check('Works offline after a visit (service worker)', async () => {
   const c = await newCtx({}, 'offline'); const p = await c.newPage();
   await open(p); await p.waitForTimeout(2500); await p.reload(); await p.waitForSelector('.bmark', { state: 'attached' }); await p.waitForTimeout(2500);
   await c.setOffline(true); await p.reload(); await p.waitForSelector('.bmark', { state: 'attached', timeout: 15000 });
-  const pins = await p.locator('.bmark').count(); await c.close(); expect(pins === 45, `${pins} pins offline`); return `${pins} pins offline`;
+  const pins = await p.locator('.bmark').count(); await c.close(); expect(pins === 60, `${pins} pins offline`); return `${pins} pins offline`;
 });
 
 // ============================================================ 10. Phones

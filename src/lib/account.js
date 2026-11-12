@@ -131,9 +131,13 @@ export class SupabaseBackend {
     return data;
   }
   async deleteAccount(user) {
-    // Deletes the student's data. Removing the login itself needs the service key (Supabase dashboard).
-    await this.c.from('weekly_steps').delete().eq('user_id', user.id);
-    await this.c.from('user_data').delete().eq('id', user.id);
+    // Deletes the login and, through "on delete cascade", everything stored with it
+    // (supabase/delete-account.sql). Before that function is installed, delete the data at least.
+    const { error } = await this.c.rpc('delete_my_account');
+    if (error) {
+      await this.c.from('weekly_steps').delete().eq('user_id', user.id);
+      await this.c.from('user_data').delete().eq('id', user.id);
+    }
     await this.signOut();
   }
 }

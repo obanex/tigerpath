@@ -31,9 +31,9 @@ export function upcomingClasses(classes, now = new Date(), horizonHours = 36, te
  * Reminder plan. walkMinutes(fromBuilding, toBuilding) -> minutes | null.
  * Returns [{ id, cls, start, fireAt, leaveBy, walk, from, title, body }].
  */
-export function planReminders(classes, now, settings, walkMinutes = () => null) {
+export function planReminders(classes, now, settings, walkMinutes = () => null, horizonHours = 36) {
   const lead = settings.leadMinutes ?? 10;
-  return upcomingClasses(classes, now, 36, settings.term).map(({ cls, start, day, dow }) => {
+  return upcomingClasses(classes, now, horizonHours, settings.term).map(({ cls, start, day, dow }) => {
     // previous class the same day that ends before this one starts
     const prev = classes
       .filter((c) => c.id !== cls.id && c.days.includes(dow) && at(start, c.end) <= start)

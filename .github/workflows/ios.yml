@@ -1,0 +1,94 @@
+name: iPhone app
+
+# Builds the TigerPath iPhone app on a GitHub-hosted Mac.
+#  - Every push: compiles the app for the iOS Simulator (no Apple account needed),
+#    so we know the iPhone project still builds.
+#  - When the App Store Connect secrets below are set (see docs/APP_STORE.md):
+#    signs the app and uploads it to App Store Connect → TestFlight.
+#
+# Secrets (repo Settings → Secrets and variables → Actions):
+#   APPLE_TEAM_ID     10-character Team ID (developer.apple.com → Membership)
+#   ASC_KEY_ID        App Store Connect API key ID
+#   ASC_ISSUER_ID     App Store Connect API issuer ID
+#   ASC_KEY_P8        contents of the downloaded AuthKey_XXXX.p8 file
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'public/**', 'ios/**', 'index.html', 'package.json', 'package-lock.json', 'capacitor.config.json', 'vite.config.js', '.github/workflows/ios.yml']
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload to TestFlight (needs the App Store Connect secrets)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CAN_SIGN: ${{ secrets.ASC_KEY_P8 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: npm ci
+      - run: npm test
+      - name: Build the web app and copy it into the iPhone project
+        run: npm run build && npx cap sync ios
+
+      - name: Compile for the iOS Simulator (no signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 60
+
+      - name: Archive, sign and upload to App Store Connect
+        if: env.CAN_SIGN == 'true' && (github.event_name == 'push' || inputs.upload)
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -o pipefail
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$ASC_KEY_P8" > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          BUILD_NUMBER=$(( 100 + GITHUB_RUN_NUMBER ))
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/TigerPath.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            "${AUTH[@]}" archive | tail -n 60
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/TigerPath.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            "${AUTH[@]}" | tail -n 40
+          echo "Uploaded build $BUILD_NUMBER. It appears in App Store Connect → TestFlight after Apple processes it (~10–30 min)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain how to turn on uploads
+        if: env.CAN_SIGN != 'true'
+        run: echo "The app compiled. To sign it and upload to TestFlight, add the App Store Connect secrets — see docs/APP_STORE.md." >> "$GITHUB_STEP_SUMMARY"

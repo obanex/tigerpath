@@ -3,10 +3,12 @@
 //
 // Web apps can only run while open (in a tab or installed). For reminders when
 // TigerPath is closed, the calendar export (.ics) carries the same alarm, which
-// the phone's calendar app fires reliably.
+// the phone's calendar app fires reliably. In the iPhone app, reminders for the
+// next 7 days are scheduled as real iOS notifications instead (src/native.js).
 
 import { planReminders, dueReminders } from '../lib/reminders.js';
 import { formatTime } from '../lib/hours.js';
+import { isNative, notificationPermission, requestNotificationPermission, scheduleReminders } from '../native.js';
 
 const SENT_KEY = 'tigerpath.remindersSent';
 const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -35,6 +37,7 @@ export function createReminders({ acc, walkMinutes, buildingName, onFire }) {
   async function show(r) {
     const { title, body, url } = describe(r);
     onFire?.(r, { title, body, url });
+    if (isNative) return; // the scheduled iOS notification covers it
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const opts = { body, tag: r.id, data: { url }, icon: 'icon.svg', badge: 'icon.svg', renotify: true };
     try {
@@ -50,20 +53,41 @@ export function createReminders({ acc, walkMinutes, buildingName, onFire }) {
     saveSent();
   }
 
+  /** iPhone app: (re)schedule the next 7 days of reminders as iOS notifications. */
+  let syncTimer, nativePerm = null;
+  function sync() {
+    if (!isNative) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(async () => {
+      const on = acc.data.settings.notifications;
+      const list = on ? planReminders(acc.data.schedule, new Date(), acc.data.settings, walkMinutes, 24 * 7).map((r) => {
+        const d = describe(r);
+        const mins = Math.round((r.start - r.fireAt) / 60000);
+        return { id: r.id, at: r.fireAt, title: d.title, body: r.leaveBy ? d.body : d.body.replace(/starts in \d+ min/, `starts in ${mins} min`), url: d.url };
+      }) : [];
+      try { await scheduleReminders(list); } catch { /* permission or plugin missing */ }
+    }, 500);
+  }
+  if (isNative) notificationPermission().then((p) => { nativePerm = p; });
+
   setInterval(tick, 20000);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && tick());
 
   return {
-    tick, plan, describe,
-    get permission() { return 'Notification' in window ? Notification.permission : 'unsupported'; },
+    tick, plan, describe, sync,
+    get permission() {
+      if (isNative) return nativePerm === 'granted' ? 'granted' : nativePerm === 'denied' ? 'denied' : 'default';
+      return 'Notification' in window ? Notification.permission : 'unsupported';
+    },
     /** Turn reminders on; asks for notification permission (must be called from a click). */
     async enable() {
-      if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+      if (isNative) nativePerm = await requestNotificationPermission();
+      else if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
       acc.update((d) => { d.settings.notifications = true; });
-      tick();
+      tick(); sync();
       return this.permission;
     },
-    disable() { acc.update((d) => { d.settings.notifications = false; }); },
+    disable() { acc.update((d) => { d.settings.notifications = false; }); sync(); },
     /** Show a sample reminder right away. */
     test() {
       const cls = acc.data.schedule[0] ?? { id: 'test', title: 'Sample class', building: 'LA', room: '4310' };

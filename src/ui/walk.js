@@ -1,5 +1,6 @@
 // Walk With Me — the walker's screens and the friend's "following" view.
 
+import { shareBase } from '../native.js';
 import L from 'leaflet';
 import { WalkSession, watchReducer, isStale, watchLink, newWalkId, TUPD } from '../lib/walkwithme.js';
 
@@ -121,7 +122,7 @@ export function createWalkWithMe(ctx) {
       const id = newWalkId();
       const eta = Date.now() + Math.ceil(r.minutes) * 60000;
       const name = ctx.acc.user?.name?.split(' ')[0] ?? 'Your friend';
-      const link = watchLink(new URL(location.pathname, location.origin).href, { id, name, from: r.fromCode, to: r.toCode, eta });
+      const link = watchLink(shareBase(), { id, name, from: r.fromCode, to: r.toCode, eta });
       const msg = `I'm walking to ${r.b.label} — should arrive by ${hm(eta)}. Follow along: ${link}`;
       showDialog(`<h2>🛡️ Walk With Me</h2>
         <p>Share your walk to <b>${esc(r.b.label)}</b> with a friend. Expected arrival <b>${hm(eta)}</b>.</p>

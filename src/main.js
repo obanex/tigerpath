@@ -30,6 +30,7 @@ import { ACCESS_FEATURES, ACCESS_TYPES, OFFICIAL_ACCESS_MAP_URL } from './data/a
 import { tagGraph, addTuRoutes, mergeBuildings, activeConstruction } from './lib/tu.js';
 import { DemoBackend } from './lib/demo.js';
 import { createNav, update as navUpdate, splitRoute, turnIcon, shortText, spokenDistance } from './lib/nav.js';
+import { isNative, shareBase, initNative, startBackgroundLocation, stopBackgroundLocation, tap, stepPermission, requestStepPermission, stepHistory } from './native.js';
 
 const CENTER = [39.3925, -76.6110];
 
@@ -486,6 +487,8 @@ function toast(msg, ms = 2600) {
   const t = $('#toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);
 }
+/** This screen's link (the public website's address, also inside the iPhone app). */
+const shareUrl = () => shareBase() + location.search + location.hash;
 async function share(url, title) {
   if (navigator.share) { try { await navigator.share({ title, url }); return; } catch { /* cancelled */ } }
   try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch { prompt('Copy this link', url); }
@@ -595,7 +598,7 @@ function renderDetail() {
   $('#dirTo').onclick = () => { setPlace('to', { type: 'building', id: b.id }); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
   $('#dirFrom').onclick = () => { setPlace('from', { type: 'building', id: b.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
   $('#favBtn').onclick = () => { acc.update((d) => { d.favs = fav ? d.favs.filter((x) => x !== b.id) : [...d.favs, b.id]; }); renderDetail(); };
-  $('#shareBtn').onclick = () => share(location.href, b.name);
+  $('#shareBtn').onclick = () => share(shareUrl(), b.name);
   $('#stepFree').onclick = () => { S.requestedKind = 'stepfree'; $('#dirTo').click(); };
   const near = S.buildings.filter((x) => x.id !== b.id).map((x) => ({ x, d: distance(b, x) })).sort((p, q) => p.d - q.d).slice(0, 4);
   $('#nearby').innerHTML = near.map(({ x, d }) => `<li><span class="code">${esc(tag(x))}</span><button class="link" data-b="${esc(x.id)}">${esc(x.name)}</button><span class="muted">${formatDistance(d, S.units)}</span></li>`).join('');
@@ -798,7 +801,7 @@ function renderRouteOut() {
     ${S.graphSource === 'seed' ? '<p class="hint">Routes use an approximate campus path network. Follow posted signs and sidewalks.</p>' : `<p class="hint">Walkway data © OpenStreetMap contributors.${S.tu && sel.kind === 'stepfree' ? ' Accessibility data: Towson University campus map (preliminary).' : ''}</p>`}`;
   out.querySelector('.route-opts').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) selectRoute(k); };
   $('#routeOut .steps').onclick = (e) => { const li = e.target.closest('[data-step]'); if (li) { const s = r.steps[+li.dataset.step]; flyTo([s.at.lat, s.at.lng], 19); } };
-  $('#shareRoute').onclick = () => share(location.href, `Walk to ${r.b.label}`);
+  $('#shareRoute').onclick = () => share(shareUrl(), `Walk to ${r.b.label}`);
   $('#printRoute').onclick = () => window.print();
   $('#liveBtn').onclick = toggleLive;
   $('#wwmBtn').onclick = () => wwm?.open();
@@ -871,6 +874,7 @@ function beginNav() {
   $('#navHud').hidden = false; $('#navBottom').hidden = false; $('#navRecenter').hidden = true;
   sheet('peek');
   tracker.start('nav').catch(() => {}); // keeps the screen on; walks count toward goals when signed in
+  if (isNative && !SIMULATE) startBackgroundLocation({ message: `Navigating to ${S.lastRoute?.b?.label ?? 'your destination'}`, onFix: onPosition }); // keeps going with the phone locked
   renderRouteOut();
   const start = S.me && !SIMULATE ? S.me : nav.pts[0];
   map.setView([start.lat, start.lng], 18, { animate: false });
@@ -885,6 +889,7 @@ function endNav({ arrived = false } = {}) {
   $('#navHud').hidden = true; $('#navBottom').hidden = true;
   navLayer?.remove(); navLayer = null;
   if (tracker.source === 'nav') tracker.stop();
+  stopBackgroundLocation();
   window.speechSynthesis?.cancel();
   if (arrived) { toast(`You’ve arrived at ${label ?? 'your destination'} 🎉`, 5000); say(`You have arrived at ${label ?? 'your destination'}`); }
   sheet('half');
@@ -952,7 +957,7 @@ function onLiveUpdate() {
     navStep = u.next.n;
     document.querySelectorAll('#routeOut .steps li').forEach((li) => li.classList.toggle('cur', +li.dataset.step === navStep));
   }
-  if (u.say) { say(u.say); if (/^(Turn|Make|Bear)/.test(u.say)) navigator.vibrate?.(180); }
+  if (u.say) { say(u.say); if (/^(Turn|Make|Bear)/.test(u.say)) tap(); }
 }
 function placeMe(p, heading = null) {
   if (!meMarker) {
@@ -967,29 +972,36 @@ function placeMe(p, heading = null) {
 let meMarker, meCircle;
 function startWatch() {
   if (S.watchId != null || !navigator.geolocation) return;
-  S.watchId = navigator.geolocation.watchPosition((pos) => {
-    const first = !S.me;
-    if (simTimer) return; // a simulated walk is driving the position
-    const moving = pos.coords.speed == null || pos.coords.speed > 0.4;
-    S.me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, heading: moving && Number.isFinite(pos.coords.heading) ? pos.coords.heading : null };
-    detectVisit(S.me);
-    wwm?.position(S.me);
-    tour?.position(S.me);
-    placeMe(S.me);
-    $('#locateBtn').classList.add('active');
-    if (first) {
-      const far = distance(S.me, { lat: CENTER[0], lng: CENTER[1] }) > 3000;
-      if (far) toast('You appear to be off campus — routes start from the nearest campus path.', 4000);
-      else flyTo([S.me.lat, S.me.lng], 18);
-      if ((S.from?.type === 'me' || S.to?.type === 'me') && !S.navPending) updateRoute();
-    }
-    onLiveUpdate();
-  }, (err) => {
+  S.watchId = navigator.geolocation.watchPosition(onPosition, (err) => {
     // Permission denied stops for good. Timeouts and "position unavailable" are usually a passing GPS
     // hiccup (under trees, near buildings): the browser keeps watching, so navigation carries on.
     if (err.code === 1) { toast('Location permission denied — turn on location for TigerPath in your settings.', 5000); navigator.geolocation.clearWatch(S.watchId); S.watchId = null; if (S.live && !simTimer) endNav(); }
     else if (!S.me) toast('Still looking for your location…');
   }, { enableHighAccuracy: true, maximumAge: 1000 });
+}
+/** One GPS fix, from the browser's watcher or (iPhone app) the background-location watcher. */
+let lastFix = null;
+function onPosition(pos) {
+  if (simTimer) return; // a simulated walk is driving the position
+  const c = pos.coords;
+  const key = `${c.latitude.toFixed(6)},${c.longitude.toFixed(6)},${pos.timestamp}`;
+  if (key === lastFix) return; // the same fix delivered by both watchers
+  lastFix = key;
+  const first = !S.me;
+  const moving = c.speed == null || c.speed > 0.4;
+  S.me = { lat: c.latitude, lng: c.longitude, acc: c.accuracy, heading: moving && Number.isFinite(c.heading) && c.heading >= 0 ? c.heading : null };
+  detectVisit(S.me);
+  wwm?.position(S.me);
+  tour?.position(S.me);
+  placeMe(S.me);
+  $('#locateBtn').classList.add('active');
+  if (first) {
+    const far = distance(S.me, { lat: CENTER[0], lng: CENTER[1] }) > 3000;
+    if (far) toast('You appear to be off campus — routes start from the nearest campus path.', 4000);
+    else flyTo([S.me.lat, S.me.lng], 18);
+    if ((S.from?.type === 'me' || S.to?.type === 'me') && !S.navPending) updateRoute();
+  }
+  onLiveUpdate();
 }
 function locate() { if (S.me) flyTo([S.me.lat, S.me.lng], 18); startWatch(); }
 $('#locateBtn').onclick = locate;
@@ -1243,6 +1255,27 @@ async function loadTu() {
   map.attributionControl.addAttribution('Campus data: <a href="https://maps.towson.edu/">Towson University</a>');
 }
 
+// ---------------------------------------------------------------- iPhone step counter (app only)
+/**
+ * Fill in daily steps and distance from the iPhone's step counter (last 7 days).
+ * Takes the larger of the phone's count and what TigerPath tracked, so nothing counts twice.
+ */
+async function syncPhoneSteps() {
+  if (!isNative || !acc.user || S.settings.phoneSteps === false) return;
+  S.phoneSteps = await stepPermission();
+  if (S.phoneSteps !== 'granted') { if (S.tab === 'activity') meView?.render(); return; }
+  const hist = await stepHistory(7, dayKey);
+  const changes = Object.entries(hist).filter(([k, v]) => { const cur = acc.data.activity[k]; return !cur || v.steps > cur.steps || v.meters > cur.meters; });
+  if (!changes.length) return;
+  acc.update((d) => {
+    for (const [k, v] of changes) {
+      const cur = d.activity[k] ?? { meters: 0, campusMeters: 0, steps: 0, seconds: 0 };
+      d.activity[k] = { ...cur, steps: Math.max(cur.steps, v.steps), meters: Math.max(cur.meters, v.meters), phone: true };
+    }
+  });
+  syncHallCup({ now: true });
+}
+
 // ---------------------------------------------------------------- accounts, activity, reminders
 let meView, tracker, reminders, wwm;
 const tour = createTour({
@@ -1438,12 +1471,15 @@ async function initAccounts() {
   });
   meView = createMeView({ el: $('#meOut'), actEl: $('#actOut'), welcomeEl: $('#welcome'), acc, tracker, toast, buildings: S.buildings, onPrefs,
     onNavigate: (tab) => showTab(tab),
-    hallCup: { teams: TEAMS, board: () => hallBoard(), lastWinner: () => S.lastWinner, get cloud() { return cloud(); } } });
+    hallCup: { teams: TEAMS, board: () => hallBoard(), lastWinner: () => S.lastWinner, get cloud() { return cloud(); } },
+    phoneSteps: isNative ? { status: () => S.phoneSteps, enable: async () => { S.phoneSteps = await requestStepPermission(); await syncPhoneSteps(); } } : null });
   reminders = createReminders({
     acc, walkMinutes, buildingName: (id) => byId.get(id)?.name ?? id,
     onFire: (r, { title, body, url }) => showBanner(title, body, url),
   });
   acc.onChange(() => {
+    reminders.sync(); // iPhone app: keep the scheduled class notifications in step with the schedule
+    if (isNative && acc.user && S.phoneSteps == null) syncPhoneSteps();
     checkAchievements();
     syncHallCup();
     walkCache.clear();
@@ -1510,7 +1546,13 @@ window.__tigerpath = { map, route: () => S.lastRoute?.latlngs ?? null }; // for 
   await loadTu();
   buildGraph();
   await initAccounts();
+  initNative({ // iPhone app: resume → refresh steps, reminders, Hall Cup; tapped notification → open its directions
+    onResume: () => { syncPhoneSteps(); reminders.sync(); loadHallBoard(); if (!S.selected && S.tab === 'explore') renderPulseNow(); },
+    onOpenUrl: (hash) => { location.hash = hash; },
+  });
+  syncPhoneSteps(); reminders.sync();
   applyTheme();
+  $('#demoBtn').onclick = () => { location.href = `${location.pathname}?demo`; };
   $('#tourBtn').onclick = () => { try { sessionStorage.setItem('tigerpath.guestSession', '1'); } catch { /* ignore */ } meView.hideWelcome(); showTab('tour'); };
   // Welcome screen first — unless signed in, already chose guest this session, or opened a shared link
   let guestSession = false; try { guestSession = !!sessionStorage.getItem('tigerpath.guestSession'); } catch { /* ignore */ }
@@ -1527,5 +1569,5 @@ window.__tigerpath = { map, route: () => S.lastRoute?.latlngs ?? null }; // for 
   loadWeather(); setInterval(loadWeather, 20 * 60 * 1000);
   loadHallBoard(); setInterval(loadHallBoard, 5 * 60 * 1000); syncHallCup({ now: true }); checkHallChampion();
   checkAchievements();
-  if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  if (import.meta.env.PROD && !isNative && 'serviceWorker' in navigator) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
 })();

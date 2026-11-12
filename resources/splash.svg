@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">
+  <rect width="2732" height="2732" fill="#111111"/>
+  <g transform="translate(1366 1250) scale(0.55) translate(-512 -475)">
+    <path d="M512 150c-140 0-250 110-250 250 0 180 250 400 250 400s250-220 250-400c0-140-110-250-250-250z" fill="#ffbb00"/>
+    <circle cx="512" cy="400" r="96" fill="#111111"/>
+  </g>
+  <text x="1366" y="1720" font-family="Helvetica, Arial, sans-serif" font-weight="800" font-size="150" fill="#ffffff" text-anchor="middle">TigerPath</text>
+</svg>

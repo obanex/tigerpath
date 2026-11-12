@@ -393,3 +393,16 @@ body.navigating #demoBar { display: none; }
   #navBottom { left: 414px; right: 12px; bottom: 12px; border-radius: 16px; }
 }
 @media print { #navHud, #navBottom { display: none !important; } }
+
+/* ---------- iPhone app (and installed web app): keep clear of the notch / status bar ---------- */
+#toast, #banner, #walkBar, #navHud { margin-top: env(safe-area-inset-top); }
+@media (max-width: 760px) {
+  #demoBar, .map-ctrls { margin-top: env(safe-area-inset-top); }
+  .panel[data-sheet="full"] { height: calc(100dvh - 40px - env(safe-area-inset-top)); }
+}
+#welcome { padding-top: max(16px, env(safe-area-inset-top)); }
+.card.phone-steps { margin: 10px 0; }
+html.native .leaflet-control-attribution { margin-bottom: env(safe-area-inset-bottom); }
+.about, .small-print { font-size: .75rem; margin-top: 18px; } .about a, .small-print a { color: inherit; }
+.center-btn { display: block; margin: 10px auto 0; text-align: center; }
+.list li button.link, .pulse-list .link { min-height: 28px; }

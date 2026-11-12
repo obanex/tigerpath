@@ -105,6 +105,16 @@ and replace `src/data/buildings.js`.
 Improving OSM (for example tagging `lit=yes`, `wheelchair=*` and `highway=steps` around campus) directly improves
 TigerPath's ♿ and 🌙 routing. A Towson GIS class or mapathon would be a good way to do it.
 
+## iPhone app
+
+`ios/` is the App Store version, made with [Capacitor](https://capacitorjs.com) from the same code. On an iPhone it adds
+class reminders as real notifications (even when the app is closed), steps from the iPhone's step counter, and turn-by-turn
+directions that keep going with the phone locked (`src/native.js`; on the website those calls do nothing).
+The **iPhone app** workflow compiles it on a GitHub Mac on every push, and signs and uploads it to TestFlight once the App
+Store Connect secrets are set. Everything needed to publish it — Apple account steps, listing text, privacy answers,
+reviewer notes — is in **[docs/APP_STORE.md](docs/APP_STORE.md)**. Privacy policy: `public/privacy.html`; support page:
+`public/support.html`.
+
 ## Demo mode (for presentations)
 
 Open **[obanex.github.io/tigerpath/?demo](https://obanex.github.io/tigerpath/?demo)** (or `#demo`) to show TigerPath with
@@ -230,6 +240,10 @@ src/
   data/tour.js        tour stops and wording  ← edit me (have Admissions review)
   config.js           Supabase settings (optional)
 supabase/schema.sql   cloud accounts table + security rules
+supabase/delete-account.sql  lets a student delete their own login from the app (App Store requirement)
+src/native.js         iPhone-app features (notifications, step counter, background location, haptics)
+ios/                  the iPhone app project (Capacitor); resources/ holds its icon and splash sources
+docs/APP_STORE.md     how to publish to the App Store
   main.js             app UI (Leaflet map, panels, URL state)
 scripts/fetch-osm.mjs
 scripts/fetch-tu.mjs  TU's official campus map layers → public/data/tu-campus.json

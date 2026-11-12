@@ -53,7 +53,7 @@ const seg = (name, options, value) => `<div class="seg" role="radiogroup" data-p
  * el: account view container · welcomeEl: welcome overlay · buildings: for the "home" picker
  * onPrefs(key): called after a preference changes so the app can apply it
  */
-export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {}, onNavigate = () => {}, hallCup = null }) {
+export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildings, onPrefs = () => {}, onNavigate = () => {}, hallCup = null, phoneSteps = null }) {
   let mode = 'signup';
 
   /** Sign-up / sign-in form, used on the welcome screen. */
@@ -121,6 +121,17 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
     </details>`;
   }
 
+  /** iPhone app only: steps from the phone's own step counter. */
+  function phoneStepsCard() {
+    const st = phoneSteps?.status();
+    if (!st || st === 'unavailable' || acc.data.settings.phoneSteps === false) return '';
+    if (st === 'granted') return '<p class="hint">📱 Steps and distance come from your iPhone’s step counter, so every walk counts — even when TigerPath is closed.</p>';
+    if (st === 'denied') return '<p class="hint">📱 To count steps automatically, allow <b>Motion &amp; Fitness</b> for TigerPath in the iPhone Settings app.</p>';
+    return `<div class="card phone-steps"><b>📱 Count steps from your iPhone</b>
+      <p class="hint">Fills in your steps every day, even when TigerPath is closed, and counts them for your Hall Cup team. Only daily totals are saved.</p>
+      <button class="btn primary small" id="phoneStepsBtn">Turn on</button></div>`;
+  }
+
   function hallCupSection({ readOnly = false } = {}) {
     if (!hallCup) return '';
     const st = acc.data.settings, board = hallCup.board();
@@ -166,6 +177,8 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
   }
 
   // ---------------------------------------------------------------- My account
+  const about = `<p class="hint about">TigerPath is an independent student project, not an official Towson University app.
+    <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="support.html" target="_blank" rel="noopener">Support</a></p>`;
   function accountView() {
     if (!acc.user) {
       el.innerHTML = `
@@ -173,7 +186,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
           <span class="muted small">Your settings are saved on this device.</span></div></div>
         <button class="btn primary wide" id="openWelcome">Sign in or create an account</button>
         <ul class="perks"><li>🎯 Daily step and mile goals</li><li>🏆 Compete for your hall in the Hall Cup</li><li>☁️ Your classes and settings on all your devices</li></ul>
-        ${preferences()}`;
+        ${preferences()}${about}`;
       el.querySelector('#openWelcome').onclick = showWelcome;
       bindPrefs(el);
       return;
@@ -188,12 +201,15 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
       <details class="card"><summary>⚙️ Account & data</summary>
         <p class="hint">${acc.backend.kind === 'cloud' ? 'Synced to your TigerPath cloud account.' : 'Saved on this device.'}</p>
         <div class="btn-row"><button class="btn" id="exportData">Download my data</button><button class="btn danger" id="deleteAcct">Delete account</button></div>
-      </details>`;
+        <p class="hint">Deleting removes your login and everything saved with it, immediately.</p>
+      </details>${about}`;
     bindPrefs(el);
     el.querySelector('#toActivity').onclick = () => onNavigate('activity');
     el.querySelector('#signOut').onclick = async () => { if (tracker.running) tracker.stop(); await acc.signOut(); toast('Signed out'); };
     el.querySelector('#exportData').onclick = () => {
       const blob = new Blob([JSON.stringify({ account: acc.user, ...acc.data }, null, 2)], { type: 'application/json' });
+      const file = new File([blob], 'tigerpath-data.json', { type: 'application/json' });
+      if (navigator.canShare?.({ files: [file] })) { navigator.share({ files: [file], title: 'My TigerPath data' }).catch(() => {}); return; } // iPhone app: Save to Files, AirDrop…
       const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'tigerpath-data.json' });
       a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     };
@@ -238,6 +254,7 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
         <div><b>${st}${st ? ' 🔥' : ''}</b><span>day streak</span></div>
       </div>
       ${p.met ? '<p class="goal-met">🎉 Goal reached today. Nice work!</p>' : ''}
+      ${phoneStepsCard()}
       <button class="btn ${live ? '' : 'primary'} wide" id="trackBtn">${live ? '■ Stop tracking' : '▶ Start tracking a walk'}</button>
       <p class="hint" id="trackStatus" aria-live="polite">${live
         ? `Tracking · ${fmtMiles(live.meters)} mi · ${fmtInt(live.steps)} steps${live.usingMotion ? '' : ' (estimated from distance)'}. Keep TigerPath open — phones pause web apps in the background.`
@@ -263,6 +280,8 @@ export function createMeView({ el, actEl, welcomeEl, acc, tracker, toast, buildi
         </form></details>`;
 
     bindPrefs(actEl); // Hall Cup team picker
+    const psb = actEl.querySelector('#phoneStepsBtn');
+    if (psb) psb.onclick = async () => { psb.disabled = true; await phoneSteps.enable(); render(); };
     actEl.querySelector('#trackBtn').onclick = async () => {
       if (tracker.running) {
         const s = tracker.stop();

@@ -90,10 +90,9 @@ export function tagGraph(graph, tu, { routeTol = 4, stairsTol = 3, maxAngle = 30
 
 /**
  * Add TU's surveyed accessible / limited-accessibility routes to the graph as
- * step-free-only edges, stitched to nearby walkway nodes. OpenStreetMap lacks
- * some of these connectors (e.g. the ramp to a library's accessible door), so
- * without them step-free directions can't reach some entrances. Regular routes
- * never use these edges (edge.onlyAccessible).
+ * walkway edges, stitched to nearby walkway nodes. OpenStreetMap lacks some of
+ * these paths (e.g. the ramp to a library's accessible door); every route type
+ * can use them, so the fastest route is never longer than the step-free one.
  */
 export function addTuRoutes(graph, tu, { stitch = 6, stitchEnd = 15 } = {}) {
   if (!tu?.accessRoutes?.length) return 0;
@@ -117,7 +116,7 @@ export function addTuRoutes(graph, tu, { stitch = 6, stitchEnd = 15 } = {}) {
   let added = 0;
   for (const r of tu.accessRoutes) {
     if (r.rating === 'no') continue;
-    const flags = { path: true, wheelchair: r.rating, onlyAccessible: true, tuRated: true };
+    const flags = { path: true, wheelchair: r.rating, tuPath: true, tuRated: true };
     let prev = null;
     r.line.forEach(([lat, lng], i) => {
       const id = keyOf(lat, lng);

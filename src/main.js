@@ -345,9 +345,9 @@ function buildGraph() {
     S.graph = graphFromProcessed(S.osm);
     S.tuTagged = tagGraph(S.graph, S.tu); // TU's accessibility survey: rated routes and stairs
     // the walkway network everyone can use; isolated fragments (gated fields, private drives) are ignored.
-    // Measured before TU's step-free-only connectors join some fragments to it.
+    // Measured before TU's surveyed paths are added, so places always link to the main OpenStreetMap network.
     const walk = S.graph.mainComponent();
-    S.tuTagged.added = addTuRoutes(S.graph, S.tu); // …and the step-free connectors OpenStreetMap lacks
+    S.tuTagged.added = addTuRoutes(S.graph, S.tu); // …and the surveyed paths OpenStreetMap lacks
     for (const n of S.graph.nodes.keys()) if (isTuNode(n)) walk.add(n); // reachable for step-free routes
     for (const p of pts) { // connect each place to the 2 nearest walkway nodes
       const near = S.graph.nearest(p, 2, (n) => walk.has(n.id) && !isTuNode(n.id));
@@ -382,7 +382,7 @@ function buildGraph() {
 }
 
 let tmpSeq = 0;
-/** Nodes of TU's step-free-only connectors: places link to regular walkways, never straight onto these. */
+/** Nodes of TU's surveyed paths: places link to regular walkways, never straight onto these. */
 const isTuNode = (id) => typeof id === 'string' && id.startsWith('tu:');
 /** Resolve a place to a graph node id. Returns { id, label, latlng, cleanup }. */
 function placeNode(place, door = null) {

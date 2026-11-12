@@ -35,7 +35,7 @@ test('tagGraph: TU stairs next to a walkway mark it as stairs, unless TU rates i
   assert.equal(edge(g, 'b', 'c').stairs, undefined);
 });
 
-test('addTuRoutes: step-free connectors only serve step-free routes', () => {
+test('addTuRoutes: TU’s surveyed paths join the network for every route type', () => {
   const g = new Graph();
   // two walkway pieces with a flight of stairs between them, and TU's ramp alongside
   g.addNode('a', 39.39, -76.61); g.addNode('b', 39.39, -76.6099); g.addNode('c', 39.39, -76.6095); g.addNode('d', 39.39, -76.6094);
@@ -47,7 +47,7 @@ test('addTuRoutes: step-free connectors only serve step-free routes', () => {
   assert.ok(step, 'TU ramp joins the pieces');
   assert.ok(step.path.some((id) => String(id).startsWith('tu:')));
   const std = route(g, 'a', 'd', 'standard');
-  assert.ok(std.path.every((id) => !String(id).startsWith('tu:')), 'regular routes keep to the walkways');
+  assert.ok(std.dist <= step.dist + 0.01, 'the fastest route is never longer than the step-free one');
 });
 
 test('mergeBuildings: codes, offices without duplicates, entrances, extra buildings', () => {

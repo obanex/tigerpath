@@ -50,16 +50,16 @@ check a class reminder arrives with the app closed. You can invite up to 100 int
 an orientation office) before the public release.
 
 ### 6. Fill in the App Store listing and submit
-Use the text below, add screenshots (6.9" iPhone, at least 3: take them on your phone, or ask me to make them), set the
-price to Free, and press **Add for Review**. Apple usually answers in 1–3 days.
+Use the text below, upload the screenshots in **docs/app-store-screenshots/** (6.9" iPhone, 1320 × 2868, in order 1–7;
+remake them with `node scripts/app-store-screenshots.mjs`), set the price to Free, and press **Add for Review**. Apple
+usually answers in 1–3 days.
 
 ## Before you submit — two things to check
 
-**Use of Towson's name.** The app is named **TU TigerPath**, describes itself as "for Towson University" and says on the welcome screen, in My account,
-in the privacy policy and on the support page that it is an independent student project, not an official app. The app icon
-uses no TU logo. Apple can still ask whether you're allowed to use a university's name (guideline 5.2.1). The cleanest
-answer is a short email from TU (University Marketing & Communications, or the office sponsoring your pilot) saying they
-don't object; attach it in the review notes if you have one.
+**Towson University's name.** The app is **TU TigerPath** and presents itself as Towson University's campus walking guide.
+Apple checks that an app using an organization's name has its permission (guideline 5.2.1), so submit once the partnership
+with TU is in place, and paste a line in the review notes such as "Developed in partnership with Towson University
+([office])"; keep TU's written approval (an email is enough) ready in case Apple asks for it.
 
 **Full account deletion** is set up: "Delete account" deletes the login and everything stored with it
 (`supabase/delete-account.sql`, installed and tested on the live project).
@@ -105,8 +105,6 @@ VISITING?
 Take the self-guided campus tour: ten stops with directions between them and a story at each one.
 
 Private by design: no ads, no tracking, and we never store the routes you walk.
-
-TU TigerPath is an independent student project and is not an official Towson University app.
 
 **Keywords (100 max):** towson,campus,map,TU,tigers,walking,directions,accessible,class,schedule,steps,tour,college,university
 

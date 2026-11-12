@@ -167,8 +167,8 @@ accessible, limited or not accessible, stairs, accessible entrances, accessible 
 Step-free routing combines OpenStreetMap walkways with TU's survey (`src/lib/tu.js`):
 - walkways running along a TU-rated segment take its rating; "not accessible" ones are never used;
 - walkways next to a TU stairs point count as stairs, unless TU rates that stretch accessible;
-- TU's accessible segments are added as **step-free-only** connectors where OpenStreetMap lacks them (e.g. the ramp to
-  a building's accessible door). Regular routes never use them;
+- TU's accessible segments are added as paths where OpenStreetMap lacks them (e.g. the ramp to a building's accessible
+  door); every route type can use them, so the fastest route is never longer than the step-free one;
 - step-free routes start and end at a building's **accessible entrance** (the closest of up to four).
 
 With TU's data, every building except Scarborough Hall has a step-free route from every other building (TU lists no

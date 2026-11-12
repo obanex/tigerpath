@@ -132,7 +132,6 @@ export const PROFILES = {
  */
 export function edgeCost(edge, profile, ctx = {}) {
   if (edge.closed) return Infinity;
-  if (edge.onlyAccessible && profile !== 'accessible') return Infinity; // TU-surveyed step-free connectors
   let f = 1;
   if (profile === 'accessible') {
     if (edge.stairs || edge.wheelchair === 'no' || edge.kerb === 'raised') return Infinity;

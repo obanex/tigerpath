@@ -20,7 +20,7 @@ import { createMeView } from './ui/me.js';
 import { routeOptions } from './lib/alternatives.js';
 import { isDarkOutside } from './lib/sun.js';
 import { renderPulse, discoverRows } from './ui/pulse.js';
-import { PHOTOS, BUILDING_PHOTOS, PLACE_STORIES } from './data/photos.js';
+import { PHOTOS, BUILDING_PHOTOS, PLACE_STORIES, HERO_PHOTOS } from './data/photos.js';
 import { getWeather, weatherAdvice } from './lib/weather.js';
 import { createWalkWithMe, createWatchView } from './ui/walk.js';
 import { createTour } from './ui/tour.js';
@@ -98,6 +98,17 @@ const photosOf = (key) => (BUILDING_PHOTOS[key] ?? [key]).filter((k) => PHOTOS[k
 /** The lead photo of a place, or null. key: a building id or a PHOTOS key. */
 const photoOf = (key) => photosOf(key)[0] ?? null;
 /** "Creator: …, © …" for our own and TU's photos; author, license and source for Wikimedia Commons ones. */
+/** Explore's background: the next one in HERO_PHOTOS each time the app opens (or comes back after a while). */
+let heroKey;
+function nextHero() {
+  let i = -1;
+  try { i = HERO_PHOTOS.indexOf(localStorage.getItem('tp.hero')); } catch { /* storage blocked */ }
+  heroKey = HERO_PHOTOS[i < 0 ? Math.floor(Math.random() * HERO_PHOTOS.length) : (i + 1) % HERO_PHOTOS.length];
+  try { localStorage.setItem('tp.hero', heroKey); } catch { /* storage blocked */ }
+  const p = photoOf(heroKey), img = $('#heroImg');
+  img.src = p.src; img.alt = p.alt; img.style.objectPosition = p.pos;
+  if ($('#photoCredits')) renderHomeCredits();
+}
 const creditLine = (p) => p.license
   ? `<a href="${esc(p.source)}" target="_blank" rel="noopener">${esc(p.credit)}</a> (${esc(p.license)}), via Wikimedia Commons`
   : [p.creator && `Creator: ${esc(p.creator)}`, p.rights && `© ${esc(p.rights)}`].filter(Boolean).join(', ');
@@ -904,7 +915,10 @@ function renderHome() {
       <button class="btn small" data-go='${esc(JSON.stringify({ type: 'building', id: home.id }))}'>Directions home</button></li>` : '')
     + (S.favs.map(li).join('') || (home ? '' : '<li class="muted">Tap ☆ on a building to save it, or set your home in My account.</li>'));
   $('#recent').innerHTML = S.recent.map(li).join('') || '<li class="muted">Nothing yet.</li>';
-  const shown = ['stephens-sun', ...EXPLORE_DISCOVER.map(([id]) => (id === 'TOUR' ? TOUR_PHOTO : photoOf(id)?.key))].filter(Boolean);
+  renderHomeCredits();
+}
+function renderHomeCredits() {
+  const shown = [heroKey, ...EXPLORE_DISCOVER.map(([id]) => (id === 'TOUR' ? TOUR_PHOTO : photoOf(id)?.key))].filter(Boolean);
   $('#photoCredits').innerHTML = `Photos: ${[...new Set(shown)].map((k) => `${esc(PHOTOS[k].alt.split(',')[0])} — ${creditLine(PHOTOS[k])}`).join('; ')}.`;
 }
 /** Explore's Discover cards: three small, then two big (the tour first). */
@@ -1909,6 +1923,11 @@ function renderReminderCard() {
 window.__tigerpath = { map, route: () => S.lastRoute?.latlngs ?? null }; // for the browser tests
 
 (async function boot() {
+  nextHero();
+  let hiddenAt = 0; // back after 5+ minutes away counts as opening the app again
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 5 * 60000) nextHero();
+  });
   await loadBasemapMeta();
   setBasemap(S.basemap);
   await loadOsm();

@@ -96,10 +96,11 @@ Center for GIS (CGIS@towson.edu) before relying on it officially; they are also 
 Without the file, the app falls back to its own sample data in `src/data/places.js`.
 
 **Photos (`public/photos/`, credits in `src/data/photos.js`):** building photos taken by Obanex Francois (Stephens Hall,
-Cook Library inside and out, Burdick Hall, Freedom Square), photos © Towson University (some by Lauren Castellana), one
-© The Towerlight (Media Center), and six openly licensed photos from Wikimedia Commons (CC0, CC BY 2.0, CC BY-SA
-3.0/4.0). Each shows its credit next to it ("Creator: …", "© …", or author, license and link for Commons photos, as their
-licenses require); keep those if you change a page. Buildings with several photos get a swipeable gallery on their page;
+Cook Library inside and out, Burdick Hall, Freedom Square), photos © Towson University (the renovated
+University Union, Stephens Hall, the Science Complex and others, some by Lauren Castellana), one © The Towerlight (Media Center), and five openly licensed
+photos from Wikimedia Commons (CC0, CC BY 2.0, CC BY-SA 3.0/4.0). Each shows its credit next to it ("Creator: …", "© …", or author, license and link for Commons photos, as their
+licenses require); keep those if you change a page. The Explore background shows a different photo each time the app opens (`HERO_PHOTOS`). Buildings with several
+photos get a swipeable gallery on their page;
 buildings without one show their footprint. Photos are cropped to landscape, at most 1400 px wide, and saved without
 location data.
 

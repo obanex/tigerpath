@@ -1,5 +1,5 @@
 // TigerPath service worker: the app and the self-hosted map work offline once viewed.
-const APP = 'tigerpath-app-v6'; // v6: building photo galleries
+const APP = 'tigerpath-app-v7'; // v7: rotating Explore background, renovated Union photos
 const TILES = 'tigerpath-tiles-v2'; // v2: drop cached CARTO tiles
 const MAX_TILES = 1500;
 const TILE_HOSTS = /(tile\.openstreetmap\.org|server\.arcgisonline\.com)$/;

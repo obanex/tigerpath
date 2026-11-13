@@ -12,8 +12,6 @@ export const PHOTOS = {
     credit: 'Anc516', license: 'CC BY-SA 3.0', source: 'https://commons.wikimedia.org/wiki/File:JohnnyUnitasStadium2013.jpg' },
   'secu-arena': { file: 'secu-arena.jpg', alt: 'A basketball game in SECU Arena, with gold seats', pos: '60% 40%',
     credit: 'Gregory Koch', license: 'CC BY-SA 4.0', source: 'https://commons.wikimedia.org/wiki/File:SECUArena.JPG' },
-  'university-union': { file: 'university-union.jpg', alt: 'The University Union entrance', pos: '30% 50%',
-    credit: 'Wikimedia Commons contributor', license: 'CC BY-SA 3.0', source: 'https://commons.wikimedia.org/wiki/File:TUUnivUnion.JPG' },
   'glen-snow': { file: 'glen-snow.jpg', alt: 'Trees in the Glen in winter', pos: '50% 50%',
     credit: 'Katie Simmons-Barth Photography', license: 'CC BY 2.0', source: 'https://commons.wikimedia.org/wiki/File:Towson_University_glen_snow_(16095534344).jpg' },
 
@@ -37,16 +35,32 @@ export const PHOTOS = {
   'lecture-hall': { file: 'lecture-hall.jpg', alt: 'The Lecture Hall and its outdoor stairs', pos: '40% 45%', rights: 'Towson University' },
   'liberal-arts': { file: 'liberal-arts.jpg', alt: 'The Liberal Arts Building behind a row of flags', pos: '45% 45%', rights: 'Towson University' },
   'linthicum-hall': { file: 'linthicum-hall.jpg', alt: 'The entrance of Linthicum Hall', pos: '50% 40%', rights: 'Towson University' },
+  'union-mural': { file: 'union-mural.jpg', alt: 'The renovated University Union, with a tiger mural on its brick wall', pos: '60% 50%', rights: 'Towson University' },
+  'union-entrance': { file: 'union-entrance.jpg', alt: 'The glass entrance of the renovated University Union', pos: '55% 50%', rights: 'Towson University' },
+  'union-terrace': { file: 'union-terrace.jpg', alt: 'The University Union and its brick plaza', pos: '50% 50%', rights: 'Towson University' },
+  'burdick-tiger-snow': { file: 'burdick-tiger-snow.jpg', alt: 'The tiger statue with snow on its head, in front of Burdick Hall', pos: '45% 50%', rights: 'Towson University' },
+  'health-professions-corner': { file: 'health-professions-corner.jpg', alt: 'A corner of the Health Professions Building', pos: '50% 50%', rights: 'Towson University' },
+  'stephens-aerial-autumn': { file: 'stephens-aerial-autumn.jpg', alt: 'Stephens Hall and campus from above in autumn', pos: '55% 55%', rights: 'Towson University' },
+  'stephens-aerial-sunset': { file: 'stephens-aerial-sunset.jpg', alt: 'Stephens Hall from above at sunset', pos: '50% 60%', rights: 'Towson University' },
+  'stephens-front': { file: 'stephens-front.jpg', alt: 'The front steps and clock tower of Stephens Hall', pos: '50% 35%', rights: 'Towson University' },
+  'stephens-tiger': { file: 'stephens-tiger.jpg', alt: 'The tiger statue in front of Stephens Hall in autumn', pos: '45% 60%', rights: 'Towson University' },
+  'science-complex-evening': { file: 'science-complex-evening.jpg', alt: 'The Science Complex in evening light', pos: '40% 50%', rights: 'Towson University' },
+  'science-complex-dome': { file: 'science-complex-dome.jpg', alt: 'The Science Complex and its observatory dome', pos: '35% 45%', rights: 'Towson University' },
+  'science-complex-side': { file: 'science-complex-side.jpg', alt: 'The long brick side of the Science Complex', pos: '40% 50%', rights: 'Towson University' },
   'media-center': { file: 'media-center.jpg', alt: 'The Media Center lobby with its neon sign', pos: '50% 40%', rights: 'The Towerlight' },
 };
 
 /** Building id → photo keys, the first one leads (cards, the place page header). */
 export const BUILDING_PHOTOS = {
-  ST: ['stephens-clock', 'stephens-hall'], US: ['unitas-stadium'], AR: ['secu-arena'], UU: ['university-union'], GA: ['glen-snow'],
-  BU: ['burdick-hall', 'burdick-banner', 'burdick-walk'], CK: ['cook-library', 'cook-tiger', 'cook-stacks', 'cook-stacks-red'],
+  ST: ['stephens-clock', 'stephens-tiger', 'stephens-front', 'stephens-aerial-sunset', 'stephens-aerial-autumn', 'stephens-hall'], US: ['unitas-stadium'], AR: ['secu-arena'], UU: ['union-mural', 'union-entrance', 'union-terrace'], GA: ['glen-snow'],
+  BU: ['burdick-hall', 'burdick-banner', 'burdick-walk', 'burdick-tiger-snow'], CK: ['cook-library', 'cook-tiger', 'cook-stacks', 'cook-stacks-red'],
   FS: ['freedom-square'], YR: ['7800-york-road'], AD: ['administration'], CA: ['center-for-the-arts'], HH: ['hawkins-hall'],
-  HP: ['health-professions'], LH: ['lecture-hall'], LA: ['liberal-arts'], LI: ['linthicum-hall'], MC: ['media-center'],
+  HP: ['health-professions', 'health-professions-corner'], SC: ['science-complex-evening', 'science-complex-dome', 'science-complex-side'], LH: ['lecture-hall'], LA: ['liberal-arts'], LI: ['linthicum-hall'], MC: ['media-center'],
 };
+
+/** The Explore page's background: a different one each time the app opens. */
+export const HERO_PHOTOS = ['stephens-sun', 'stephens-aerial-autumn', 'stephens-tiger', 'science-complex-evening', 'stephens-front',
+  'stephens-aerial-sunset', 'science-complex-dome', 'science-complex-side'];
 
 /**
  * A few words about places with a story, beyond what TU's data says (who, when, what to look for).

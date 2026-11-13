@@ -503,10 +503,12 @@ a.tag:hover, a.tag:focus-visible { border-color: var(--gold-text); text-decorati
 ul.doors { margin: 4px 0 2px; padding-left: 20px; }
 ul.doors li { margin: 0; }
 /* map credits: readable in light and dark (solid background, AA-contrast links) */
-.leaflet-container .leaflet-control-attribution { background: var(--bg2); color: var(--fg2); }
-.leaflet-container .leaflet-control-attribution a { color: #00507a; }
-:root[data-theme="dark"] .leaflet-container .leaflet-control-attribution a { color: #7dd3fc; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .leaflet-container .leaflet-control-attribution a { color: #7dd3fc; } }
+/* map credits: one small, quiet line in the corner, still readable (the OpenStreetMap credit must stay visible) */
+.leaflet-container .leaflet-control-attribution { background: rgb(255 255 255 / .78); color: #3f3f46; font-size: 10px; line-height: 1.5; padding: 0 7px; border-radius: 8px 0 0 0;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.leaflet-container .leaflet-control-attribution a { color: inherit; text-decoration: underline; text-decoration-color: rgb(63 63 70 / .35); text-underline-offset: 2px; }
+:root[data-theme="dark"] .leaflet-container .leaflet-control-attribution { background: rgb(24 24 27 / .78); color: #d4d4d8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .leaflet-container .leaflet-control-attribution { background: rgb(24 24 27 / .78); color: #d4d4d8; } }
 /* demo mode */
 #demoBar { position: fixed; z-index: 1750; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--black); color: #fff; border: 2px solid var(--gold);
   border-radius: 999px; padding: 6px 14px; font-size: .82rem; box-shadow: var(--shadow); white-space: nowrap; }
@@ -542,11 +544,13 @@ body.navigating #demoBar { display: none; }
 /* ---------- phones ---------- */
 @media (max-width: 760px) {
   .leaflet-control-zoom { display: none; } /* pinch to zoom on phones */
-  .map-ctrls { display: none; bottom: calc(var(--tabbar-h) + 66px); }
+  .map-ctrls { display: none; bottom: calc(var(--tabbar-h) + 80px); }
   body[data-tab="campus"] .map-ctrls, body[data-tab="tour"] .map-ctrls { display: flex; }
   body[data-tab="tour"] .map-ctrls { bottom: auto; top: calc(12px + var(--top)); }
   body:has(#placeCard:not([hidden])) .map-ctrls { display: none; }
-  body[data-tab="campus"] .leaflet-bottom { margin-bottom: calc(var(--tabbar-h) + 58px); }
+  .leaflet-bottom { margin-bottom: var(--tabbar-h); } /* credits at the very bottom, just above the tab bar */
+  .leaflet-control-scale { display: none; } /* pinch to zoom; the scale bar is just noise on a phone */
+  .campus-bottom { bottom: calc(var(--tabbar-h) + 24px); } /* categories and cards sit above the credits */
   /* the tour is the one place that keeps a sheet over the map */
   body[data-tab="tour"] .panel { top: auto; bottom: var(--tabbar-h); height: 52dvh; border-radius: 18px 18px 0 0; box-shadow: 0 -6px 24px rgb(0 0 0 / .18); transition: height .25s ease; }
   body[data-tab="tour"] .panel[data-sheet="peek"] { height: 150px; }
@@ -596,7 +600,6 @@ body.navigating #demoBar { display: none; }
 #banner, #walkBar, #navHud { margin-top: env(safe-area-inset-top); }
 #welcome { padding-top: max(16px, env(safe-area-inset-top)); }
 .card.phone-steps { margin: 10px 0; }
-html.native .leaflet-control-attribution { margin-bottom: env(safe-area-inset-bottom); }
 .about, .small-print { font-size: .78rem; margin-top: 18px; } .about a, .small-print a { color: inherit; }
 .center-btn { display: block; margin: 10px auto 0; text-align: center; }
 .acct-btn > span { display: grid; place-items: center; width: 100%; height: 100%; }

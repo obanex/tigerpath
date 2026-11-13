@@ -114,6 +114,7 @@ const safety = [...SAFETY];
 const map = L.map('map', { zoomControl: false, maxZoom: 20, minZoom: 13 }).setView(CENTER, 16);
 L.control.zoom({ position: 'topright' }).addTo(map);
 L.control.scale({ position: 'bottomright', imperial: true, metric: true }).addTo(map);
+map.attributionControl.setPrefix(false); // keeps the credits to one short line (Leaflet doesn't require its own link)
 
 // Street map: self-hosted vector tiles in public/tiles (built monthly by the
 // "Build self-hosted map" workflow from Protomaps' free OpenStreetMap builds) —
@@ -1584,7 +1585,7 @@ async function loadTu() {
   }
   index = buildIndex();
   if (S.tu.shuttles?.length) S.shuttles = S.tu.shuttles;
-  map.attributionControl.addAttribution('Campus data: <a href="https://maps.towson.edu/">Towson University</a>');
+  map.attributionControl.addAttribution('<a href="https://maps.towson.edu/">TU campus data</a>');
 }
 
 // ---------------------------------------------------------------- iPhone step counter (app only)

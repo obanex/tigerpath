@@ -92,12 +92,15 @@ const parkingById = new Map(PARKING.map((p) => [p.id, p]));
 const LEGACY_PARKING = { 'P-UG': 'P-UPG', 'P-TTG': 'P-TTPG', 'P-GG': 'P-GPG' };
 /** Short code shown on pins and lists (TU's code for buildings from TU's map). */
 const tag = (b) => b.tag ?? b.id;
-/** A photo of a place, with its credit, or null. key: a building id or a PHOTOS key. */
-function photoOf(key) {
-  const p = PHOTOS[BUILDING_PHOTOS[key] ?? key];
-  return p ? { ...p, src: `${import.meta.env.BASE_URL}photos/${p.file}` } : null;
-}
-const creditLine = (p) => `<a href="${esc(p.source)}" target="_blank" rel="noopener">${esc(p.credit)}</a> (${esc(p.license)})`;
+/** All photos of a building (or the one PHOTOS key), each with its credit; the first leads. */
+const photosOf = (key) => (BUILDING_PHOTOS[key] ?? [key]).filter((k) => PHOTOS[k])
+  .map((k) => ({ ...PHOTOS[k], key: k, src: `${import.meta.env.BASE_URL}photos/${PHOTOS[k].file}` }));
+/** The lead photo of a place, or null. key: a building id or a PHOTOS key. */
+const photoOf = (key) => photosOf(key)[0] ?? null;
+/** "Creator: …, © …" for our own and TU's photos; author, license and source for Wikimedia Commons ones. */
+const creditLine = (p) => p.license
+  ? `<a href="${esc(p.source)}" target="_blank" rel="noopener">${esc(p.credit)}</a> (${esc(p.license)}), via Wikimedia Commons`
+  : [p.creator && `Creator: ${esc(p.creator)}`, p.rights && `© ${esc(p.rights)}`].filter(Boolean).join(', ');
 /** Parking as a search result: found by "parking", "garage", "visitor parking" or its name; visitor garages first. */
 const parkingSearchItem = (p) => ({
   id: p.id, name: p.name, category: 'parking', tag: 'P', parking: true,
@@ -700,7 +703,7 @@ function renderDetail() {
   const b = byId.get(S.selected);
   if (!b) { el.innerHTML = ''; return; }
   const cat = CATEGORIES[b.category];
-  const photo = photoOf(b.id);
+  const photos = photosOf(b.id);
   const st = openStatus(b.hours);
   const today = DAY_LABELS[DAYS[new Date().getDay()]];
   const fav = S.favs.includes(b.id);
@@ -716,7 +719,12 @@ function renderDetail() {
   if (vp) facts.push(['Visitor parking', `<button class="text-btn" style="padding:0" data-park="${esc(vp.p.id)}">${esc(vp.p.name)}</button> · ${formatDistance(vp.d, S.units)} away`]);
   el.innerHTML = `
     <div class="place-hero" style="--cat:${cat.color}">
-      ${photo ? `<img src="${esc(photo.src)}" alt="${esc(photo.alt)}" style="object-position:${esc(photo.pos)}">` : `<span class="pcode" aria-hidden="true">${esc(tag(b))}</span>`}
+      ${photos.length > 1 ? `<div class="ph-track" id="phTrack" tabindex="0" role="group" aria-label="Photos of ${esc(b.name)}, swipe for more">
+          ${photos.map((p, i) => `<img src="${esc(p.src)}" alt="${esc(p.alt)}" style="object-position:${esc(p.pos)}"${i ? ' loading="lazy"' : ''}>`).join('')}</div>
+        <button class="round-btn ph-prev" id="phPrev" aria-label="Previous photo" hidden>${ICON.back}</button>
+        <button class="round-btn ph-next" id="phNext" aria-label="Next photo">${ICON.back}</button>
+        <span class="ph-count" id="phCount" aria-live="polite">1 / ${photos.length}</span>`
+    : photos.length ? `<img src="${esc(photos[0].src)}" alt="${esc(photos[0].alt)}" style="object-position:${esc(photos[0].pos)}">` : `<span class="pcode" aria-hidden="true">${esc(tag(b))}</span>`}
       <button class="round-btn" id="backBtn" aria-label="Back">${ICON.back}</button></div>
     <div class="place-body">
       <div class="kicker">${esc(cat.label)}</div>
@@ -737,8 +745,19 @@ function renderDetail() {
       ${facts.length ? `<h3 class="h">Good to know</h3><dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       <h3 class="h">♿ Accessibility</h3>${accessCard(b)}
       <h3 class="h">Nearby</h3><ul class="list" id="nearby"></ul>
-      ${photo ? `<p class="photo-credit">Photo: ${creditLine(photo)}, via Wikimedia Commons</p>` : ''}
+      ${photos.length ? `<p class="photo-credit">${photos.length > 1 ? 'Photos' : 'Photo'}: ${[...new Set(photos.map(creditLine))].join(' · ')}</p>` : ''}
     </div>`;
+  const track = $('#phTrack');
+  if (track) {
+    const at = () => Math.round(track.scrollLeft / track.clientWidth);
+    const go = (d) => track.scrollTo({ left: (at() + d) * track.clientWidth, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+    let shown = 0;
+    track.onscroll = () => {
+      const i = at(); if (i === shown) return; shown = i;
+      $('#phCount').textContent = `${i + 1} / ${photos.length}`; $('#phPrev').hidden = i === 0; $('#phNext').hidden = i === photos.length - 1;
+    };
+    $('#phPrev').onclick = () => go(-1); $('#phNext').onclick = () => go(1);
+  }
   $('#backBtn').onclick = () => { S.selected = null; S.room = null; S.place = null; refreshMarkers(); goBack(); };
   $('#dirTo').onclick = () => { setPlace('to', { type: 'building', id: b.id }); if (!S.from && S.me) setPlace('from', { type: 'me' }); showTab('directions'); if (!S.from) $('#from').focus(); };
   $('#dirFrom').onclick = () => { setPlace('from', { type: 'building', id: b.id }); showTab('directions'); if (!S.to) $('#to').focus(); };
@@ -885,14 +904,15 @@ function renderHome() {
       <button class="btn small" data-go='${esc(JSON.stringify({ type: 'building', id: home.id }))}'>Directions home</button></li>` : '')
     + (S.favs.map(li).join('') || (home ? '' : '<li class="muted">Tap ☆ on a building to save it, or set your home in My account.</li>'));
   $('#recent').innerHTML = S.recent.map(li).join('') || '<li class="muted">Nothing yet.</li>';
-  const shown = ['stephens-sun', ...EXPLORE_DISCOVER.map(([id]) => BUILDING_PHOTOS[id] ?? (id === 'TOUR' ? 'stephens-hall' : null))].filter(Boolean);
-  $('#photoCredits').innerHTML = `Photos via Wikimedia Commons: ${[...new Set(shown)].map((k) => `${esc(PHOTOS[k].alt.split(',')[0])}, ${creditLine(PHOTOS[k])}`).join('; ')}.`;
+  const shown = ['stephens-sun', ...EXPLORE_DISCOVER.map(([id]) => (id === 'TOUR' ? TOUR_PHOTO : photoOf(id)?.key))].filter(Boolean);
+  $('#photoCredits').innerHTML = `Photos: ${[...new Set(shown)].map((k) => `${esc(PHOTOS[k].alt.split(',')[0])} — ${creditLine(PHOTOS[k])}`).join('; ')}.`;
 }
 /** Explore's Discover cards: three small, then two big (the tour first). */
-const EXPLORE_DISCOVER = [['AR'], ['UU'], ['GA'], ['TOUR'], ['US']];
+const EXPLORE_DISCOVER = [['CK'], ['BU'], ['UU'], ['TOUR'], ['US']];
+const TOUR_PHOTO = 'stephens-clock';
 function exploreDiscover() {
   return EXPLORE_DISCOVER.map(([id]) => {
-    if (id === 'TOUR') { const ph = photoOf('stephens-hall'); return { id, act: 'tour', name: 'Self-guided tour', sub: 'About 40 min at your pace', chip: '10 stops', photo: ph.src, pos: ph.pos, color: '#111', code: '' }; }
+    if (id === 'TOUR') { const ph = photoOf(TOUR_PHOTO); return { id, act: 'tour', name: 'Self-guided tour', sub: 'About 40 min at your pace', chip: '10 stops', photo: ph.src, pos: ph.pos, color: '#111', code: '' }; }
     const b = byId.get(id); return b && discoverCardFor(b, id === 'US' ? { sub: 'Home of Tigers football' } : {});
   }).filter(Boolean);
 }

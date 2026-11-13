@@ -95,11 +95,13 @@ TU marks this data "preliminary, under review" and publishes it "as is". The app
 Center for GIS (CGIS@towson.edu) before relying on it officially; they are also the right people to report errors to.
 Without the file, the app falls back to its own sample data in `src/data/places.js`.
 
-**Photos (`public/photos/`, credits in `src/data/photos.js`):** six openly licensed photos from Wikimedia Commons
-(Stephens Hall, the University Union, Johnny Unitas Stadium, SECU Arena, the Glen), shown on Explore, Discover and
-building pages. Their licenses (CC0, CC BY 2.0, CC BY-SA 3.0/4.0) require the credit lines the app shows next to them;
-keep those if you change a page. Buildings without a photo show their footprint instead. TU's own photography can
-replace these once the partnership allows it.
+**Photos (`public/photos/`, credits in `src/data/photos.js`):** building photos taken by Obanex Francois (Stephens Hall,
+Cook Library inside and out, Burdick Hall, Freedom Square), photos © Towson University (some by Lauren Castellana), one
+© The Towerlight (Media Center), and six openly licensed photos from Wikimedia Commons (CC0, CC BY 2.0, CC BY-SA
+3.0/4.0). Each shows its credit next to it ("Creator: …", "© …", or author, license and link for Commons photos, as their
+licenses require); keep those if you change a page. Buildings with several photos get a swipeable gallery on their page;
+buildings without one show their footprint. Photos are cropped to landscape, at most 1400 px wide, and saved without
+location data.
 
 **Still needs checking against current university info:**
 - **Hours** are placeholders, marked `verified: false`; the app labels them "sample hours — verify".
